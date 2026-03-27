@@ -6,6 +6,11 @@
  *   npm run version:patch  # 0.2.0 -> 0.2.1
  *   npm run version:minor  # 0.2.0 -> 0.3.0
  *   npm run version:major  # 0.2.0 -> 1.0.0
+ * 
+ * 工作流程:
+ *   1. 提交功能代码: git commit -m "feat: xxx"
+ *   2. 更新版本号: npm run version:patch
+ *   3. 推送到远程: git push
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
@@ -26,7 +31,22 @@ if (!["major", "minor", "patch"].includes(type)) {
   process.exit(1);
 }
 
-// 读取当前版本
+// ========== 1. 获取功能描述（从最近一次 commit）==========
+
+let featureDescription = "";
+try {
+  const lastCommitMsg = execSync("git log -1 --pretty=%B", { encoding: "utf-8" }).trim();
+  // 提取第一行，去掉 commit 类型前缀
+  featureDescription = lastCommitMsg
+    .split("\n")[0]
+    .replace(/^(chore|feat|fix|docs|refactor|test|style)(\(.+\))?:\s*/i, "")
+    .substring(0, 80);
+} catch {
+  // 忽略错误
+}
+
+// ========== 2. 读取并更新版本 ==========
+
 const versionPath = join(__dirname, "..", "src", "version.ts");
 let versionContent = readFileSync(versionPath, "utf-8");
 
@@ -57,31 +77,14 @@ switch (type) {
 const newVersion = `${major}.${minor}.${patch}`;
 const today = new Date().toISOString().split("T")[0];
 
-// 获取最近一次 commit message 作为版本描述
-try {
-  const lastCommitMsg = execSync("git log -1 --pretty=%B", { encoding: "utf-8" }).trim();
-  // 提取第一行作为描述，去掉常见的 commit 前缀
-  const description = lastCommitMsg
-    .split("\n")[0]
-    .replace(/^(chore|feat|fix|docs|refactor|test|style)(\(.+\))?:\s*/i, "")
-    .substring(0, 100); // 限制长度
-  
-  if (description) {
-    // 更新 description
-    const newContentWithDesc = versionContent.replace(
-      /description:\s*"[^"]*"/,
-      `description: "${description}"`
-    );
-    if (newContentWithDesc !== versionContent) {
-      versionContent = newContentWithDesc;
-      console.log(`📝 版本描述: ${description}`);
-    }
-  }
-} catch {
-  // 获取失败则保留原描述
+// 更新 version.ts
+if (featureDescription) {
+  versionContent = versionContent.replace(
+    /description:\s*"[^"]*"/,
+    `description: "${featureDescription}"`
+  );
 }
 
-// 更新 version.ts
 const newContent = versionContent
   .replace(/major:\s*\d+/, `major: ${major}`)
   .replace(/minor:\s*\d+/, `minor: ${minor}`)
@@ -90,15 +93,20 @@ const newContent = versionContent
 
 writeFileSync(versionPath, newContent);
 console.log(`✅ 版本已更新: v${newVersion}`);
+if (featureDescription) {
+  console.log(`📝 功能描述: ${featureDescription}`);
+}
 
-// 更新 package.json
+// ========== 3. 更新 package.json ==========
+
 const pkgPath = join(__dirname, "..", "package.json");
 const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
 pkg.version = newVersion;
 writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
 console.log(`✅ package.json 已更新`);
 
-// 构建
+// ========== 4. 构建 ==========
+
 console.log("🔨 正在构建...");
 try {
   execSync("npm run build", { stdio: "inherit" });
@@ -108,15 +116,30 @@ try {
   process.exit(1);
 }
 
-// Git 提交
+// ========== 5. Git 提交 ==========
+
 console.log("📝 正在提交...");
+const commitMessage = featureDescription
+  ? `release: v${newVersion} - ${featureDescription}`
+  : `release: v${newVersion}`;
+
 try {
-  execSync("git add -A", { stdio: "ignore" });
-  execSync(`git commit -m "chore: bump version to v${newVersion}"`, { stdio: "inherit" });
+  // 检查是否有未提交的更改
+  const status = execSync("git status --porcelain", { encoding: "utf-8" });
+  if (!status.trim()) {
+    console.log("⚠️ 没有需要提交的更改");
+  } else {
+    execSync("git add -A", { stdio: "ignore" });
+    execSync(`git commit -m "${commitMessage}"`, { stdio: "inherit" });
+    console.log("✅ 已提交");
+  }
+  
+  // 推送到远程
+  console.log("🚀 推送到远程...");
   execSync("git push origin master", { stdio: "inherit" });
-  console.log("✅ 已提交并推送到 GitHub");
+  console.log("✅ 已推送到 GitHub");
 } catch (e) {
-  console.log("⚠️ Git 提交失败，请手动提交");
+  console.log("⚠️ Git 操作失败，请手动提交和推送");
 }
 
 console.log(`\n🎉 版本 v${newVersion} 发布完成！`);
