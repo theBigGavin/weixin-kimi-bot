@@ -121,7 +121,7 @@ npm run agent:delete <agent-id>
 | 定时任务 | `agents/{id}/scheduled-tasks.json` | ✅ 完全隔离 | 各Agent独立任务 |
 | 工作目录 | `agents/{id}/workspace/` | ✅ 完全隔离 | 代码/文件互不干扰 |
 | 能力模板 | `templates/` | 🔄 共享 | 所有Agent共用模板定义 |
-| 通知通道 | `notification-channels.json` | 🔄 全局 | 通知通道可全局配置 |
+| 通知通道 | `agents/{id}/notification-channels.json` | ✅ 完全隔离 | 各Agent独立配置，安全隔离 |
 
 ## 聊天命令
 
