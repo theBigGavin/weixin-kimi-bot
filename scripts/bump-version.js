@@ -57,6 +57,30 @@ switch (type) {
 const newVersion = `${major}.${minor}.${patch}`;
 const today = new Date().toISOString().split("T")[0];
 
+// 获取最近一次 commit message 作为版本描述
+try {
+  const lastCommitMsg = execSync("git log -1 --pretty=%B", { encoding: "utf-8" }).trim();
+  // 提取第一行作为描述，去掉常见的 commit 前缀
+  const description = lastCommitMsg
+    .split("\n")[0]
+    .replace(/^(chore|feat|fix|docs|refactor|test|style)(\(.+\))?:\s*/i, "")
+    .substring(0, 100); // 限制长度
+  
+  if (description) {
+    // 更新 description
+    const newContentWithDesc = versionContent.replace(
+      /description:\s*"[^"]*"/,
+      `description: "${description}"`
+    );
+    if (newContentWithDesc !== versionContent) {
+      versionContent = newContentWithDesc;
+      console.log(`📝 版本描述: ${description}`);
+    }
+  }
+} catch {
+  // 获取失败则保留原描述
+}
+
 // 更新 version.ts
 const newContent = versionContent
   .replace(/major:\s*\d+/, `major: ${major}`)
