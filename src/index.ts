@@ -459,12 +459,106 @@ async function main() {
     pollMessages(session)
   );
 
+  // 启动动态 Agent 加载器（定期检查新添加的 Agent）
+  startDynamicAgentLoader();
+
   await Promise.all(pollPromises);
+}
+
+// ============ 动态 Agent 加载 ============
+
+/**
+ * 动态加载新添加的 Agent
+ * 定期检查是否有新 Agent 被创建，并自动加载
+ */
+function startDynamicAgentLoader(): void {
+  const CHECK_INTERVAL = 30_000; // 每30秒检查一次
+
+  setInterval(async () => {
+    // 重新加载所有 Agent 列表
+    await agentManager.initialize();
+    const allAgents = agentManager.getAllAgents();
+
+    for (const agentConfig of allAgents) {
+      // 如果 Agent 已经在运行中，跳过
+      if (activeAgents.has(agentConfig.id)) continue;
+
+      console.log(`\n🆕 发现新 Agent: ${agentConfig.name}，正在加载...`);
+
+      try {
+        // 加载凭证
+        const credsPath = join(agentManager.getAgentPath(agentConfig.id), "credentials.json");
+        let creds;
+        try {
+          creds = JSON.parse(readFileSync(credsPath, "utf-8"));
+        } catch {
+          console.error(`  ❌ 无法加载 ${agentConfig.name} 的凭证，跳过`);
+          continue;
+        }
+
+        // 构建运行时
+        const runtime = await agentManager.buildRuntime(agentConfig.id);
+        if (!runtime) {
+          console.error(`  ❌ 无法构建 ${agentConfig.name} 的运行时，跳过`);
+          continue;
+        }
+
+        // 创建 API 配置
+        const api: ApiOptions = {
+          baseUrl: creds.baseUrl,
+          token: creds.botToken,
+        };
+
+        // 创建会话
+        const session: AgentSession = {
+          runtime,
+          config: agentConfig,
+          api,
+          credentials: {
+            botToken: creds.botToken,
+            accountId: creds.accountId,
+            baseUrl: creds.baseUrl,
+          },
+          conversationTurns: new Map(),
+          lastMemoryExtract: new Map(),
+        };
+
+        activeAgents.set(agentConfig.id, session);
+
+        console.log(`  ✅ 已加载: ${agentConfig.name}`);
+        console.log(`     角色: ${runtime.template.icon} ${runtime.template.name}`);
+        console.log(`     工作目录: ${agentConfig.workspace.path}`);
+
+        // 设置定时任务
+        const scheduler = getScheduler(session.config.id);
+        scheduler.setApi(api, async (chatId: string, ctxToken: string, text: string) => {
+          await sendTextReply(api, chatId, ctxToken, text);
+        });
+        scheduler.start();
+
+        // 初始化通知管理器
+        const notificationManager = getNotificationManager(session.config.id);
+        try {
+          await notificationManager.initialize();
+        } catch (e) {
+          console.error(`[Notification:${session.config.id}] 初始化失败:`, e);
+        }
+
+        // 启动消息轮询
+        pollMessages(session);
+
+      } catch (error) {
+        console.error(`  ❌ 加载新 Agent ${agentConfig.name} 失败:`, error);
+      }
+    }
+  }, CHECK_INTERVAL);
+
+  console.log("\n🔄 动态 Agent 加载器已启动（每30秒检查新Agent）");
 }
 
 // 消息轮询循环
 async function pollMessages(session: AgentSession): Promise<void> {
-  let syncBuf = loadSyncBuf();
+  let syncBuf = loadSyncBuf(session.config.id);
   let consecutiveFailures = 0;
 
   while (true) {
@@ -495,7 +589,7 @@ async function pollMessages(session: AgentSession): Promise<void> {
       consecutiveFailures = 0;
 
       if (resp.get_updates_buf) {
-        saveSyncBuf(resp.get_updates_buf);
+        saveSyncBuf(resp.get_updates_buf, session.config.id);
         syncBuf = resp.get_updates_buf;
       }
 
