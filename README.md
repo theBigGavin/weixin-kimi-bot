@@ -2,6 +2,10 @@
 
 通过微信消息远程操控 Kimi Code CLI —— 基于腾讯 iLink 协议的微信 AI Bot。
 
+> 🎉 **全新多Agent版本**：支持多个微信账号，每个账号拥有独立的AI助手、工作目录和长期记忆。
+> 
+> 如果你从旧版本升级，请查看 [迁移指南](./MIGRATION.md)。
+
 ```
 微信用户 ──► iLink 协议 ──► weixin-kimi-bot ──► Kimi CLI ──► 本地文件系统
    ◄─────────────────────────────────────────────────────────────────────┘
@@ -66,40 +70,34 @@ npm install
 
 ## 快速开始
 
-### 1. 扫码登录微信
+### 1. 创建你的第一个 AI Agent
 
 ```bash
 npm run login
 ```
 
-终端会显示二维码，用微信扫码并确认。登录凭证保存在 `~/.weixin-kimi-bot/credentials.json`。
+流程：
+1. 终端显示二维码，用微信扫码
+2. 选择 **能力模板**（程序员、写作助手、Vlog创作者等）
+3. 设置 Agent 名称和工作目录
+4. 完成创建
 
-### 2. 配置（可选）
+每个微信账号对应一个独立的 AI Agent，拥有：
+- 独立的 **工作目录**
+- 独立的 **长期记忆**
+- 专属的 **能力设定**
+
+### 2. 启动 Agent
 
 ```bash
-# 查看当前配置
-npm run config
+# 启动所有 Agent
+npm start
 
-# 切换模型
-npm run config -- --model kimi-code/kimi-for-coding  # 默认编程模型
-npm run config -- --model kimi-code/kimi-k2          # K2 模型
-
-# 设置工作目录
-npm run config -- --cwd ~/Github/my-project
-
-# 设置最大 agentic 轮次
-npm run config -- --max-turns 20
-
-# 启用规划模式
-npm run config -- --plan
-
-# 设置系统提示
-npm run config -- --system-prompt "用简洁的中文回复，不要使用 Markdown 格式"
+# 或启动指定 Agent
+ACTIVE_AGENT_ID=agent_xxx npm start
 ```
 
-配置保存在 `~/.weixin-kimi-bot/config.json`。
-
-### 3. 启动 Bot
+首次启动时会显示 Agent 的欢迎语。
 
 ```bash
 npm start
@@ -137,18 +135,19 @@ Verification URL: https://www.kimi.com/code/authorize_device?user_code=XXXX-XXXX
 
 现在在微信上给 Bot 发消息就能收到 Kimi 的回复了。`Ctrl+C` 停止。
 
-### 4. 微信命令
+### 3. 微信命令
 
-在微信聊天中可以使用以下 `/` 命令：
+在与 Bot 对话时可以使用以下命令：
 
-| 命令 | 说明 | 示例 |
-|------|------|------|
-| `/help` | 显示帮助信息 | `/help` |
-| `/status` | 查看 Bot 状态 | `/status` |
-| `/config` | 查看当前配置 | `/config` |
-| `/plan` | 开启规划模式（执行复杂任务前先制定计划） | `/plan 重构项目代码` |
-| `/yolo` | ⚠️ 开启自动确认模式（自动批准所有操作，谨慎使用） | `/yolo 自动修复所有 bug` |
-| `/reset` | 重置对话上下文 | `/reset` |
+| 命令 | 说明 |
+|------|------|
+| `/help` | 显示帮助信息 |
+| `/status` | 查看当前 Agent 状态 |
+| `/reset` | 重置对话上下文（重新注入系统提示词） |
+| `/template` | 查看/切换能力模板 |
+| `/memory` | 查看长期记忆 |
+| `/prompt` | 预览当前系统提示词 |
+| `/task` | 定时任务管理 |
 
 **使用示例：**
 
@@ -211,30 +210,70 @@ pm2 save
 ```
 weixin-kimi-bot/
 ├── src/
-│   ├── index.ts             # 主入口：long-poll 循环 + 消息分发
-│   ├── login.ts             # QR 扫码登录
+│   ├── index.ts             # 主入口：多Agent消息处理
+│   ├── login.ts             # QR 扫码登录 + Agent创建
 │   ├── config.ts            # 配置管理 CLI
 │   ├── store.ts             # 状态持久化
 │   ├── ilink/
 │   │   ├── types.ts         # iLink 协议类型
-│   │   ├── api.ts           # 5 个 HTTP API 封装
+│   │   ├── api.ts           # HTTP API 封装
 │   │   └── auth.ts          # QR 登录流程
-│   └── kimi/
-│       └── handler.ts       # Kimi CLI 集成
+│   ├── kimi/
+│   │   └── handler.ts       # Kimi CLI 集成
+│   ├── agent/               # 多Agent系统
+│   │   ├── types.ts         # Agent类型定义
+│   │   ├── manager.ts       # Agent管理器
+│   │   ├── prompt-builder.ts # 提示词构建
+│   │   └── cli.ts           # Agent管理CLI
+│   ├── templates/           # 能力模板
+│   │   └── definitions.ts   # 预置角色模板
+│   ├── memory/              # 长期记忆系统
+│   │   └── manager.ts       # 记忆管理器
+│   ├── scheduler.ts         # 定时任务调度器
+│   ├── notifications/       # 通知通道
+│   │   ├── types.ts
+│   │   ├── manager.ts
+│   │   ├── channels/
+│   │   │   ├── email.ts
+│   │   │   └── telegram.ts
+│   │   └── cli.ts
+│   └── tasks/
+│       └── ai-news.ts
 ├── package.json
-└── tsconfig.json
+├── tsconfig.json
+├── AGENTS.md                # 多Agent系统文档
+├── SCHEDULER.md             # 定时任务文档
+└── NOTIFICATIONS.md         # 通知通道文档
 ```
 
 ## 本地数据
 
 所有数据存储在 `~/.weixin-kimi-bot/`，不会上传到任何服务器：
 
-| 文件 | 内容 |
-|------|------|
-| `credentials.json` | 微信登录凭证（bot_token） |
-| `config.json` | Bot 配置（模型、参数） |
-| `sync-buf.txt` | 消息游标（断点续传） |
-| `context-tokens.json` | 会话令牌（per-user） |
+```
+~/.weixin-kimi-bot/
+├── agents/                      # 每个Agent的独立数据（完全隔离）
+│   ├── agent_001/
+│   │   ├── config.json         # Agent配置
+│   │   ├── memory.json         # 长期记忆
+│   │   ├── credentials.json    # 微信登录凭证
+│   │   ├── sync-buf.txt        # 消息同步游标
+│   │   ├── context-tokens.json # 会话上下文
+│   │   ├── scheduled-tasks.json# 定时任务
+│   │   └── workspace/          # 工作目录
+│   └── agent_002/
+│       └── ...
+└── templates/                   # 能力模板
+```
+
+每个Agent拥有**完全独立**的：
+- 工作目录
+- 长期记忆
+- 定时任务
+- 消息同步游标
+- 微信会话上下文
+
+数据隔离确保不同Agent之间互不干扰。
 
 删除该目录即可完全清除所有数据。
 
@@ -274,11 +313,57 @@ npm start
 npm run service:start
 ```
 
+## 定时任务
+
+Bot 支持通过自然语言或 crontab 表达式创建定时任务：
+
+### 自然语言创建（推荐）
+
+```
+/task create 每天早上9点搜集AI资讯
+/task create 每工作日早上8点半提醒我打卡
+```
+
+机器人会解析你的描述，请你确认后创建任务。
+
+### 其他命令
+
+```
+/task example              # 添加示例任务
+/task list                 # 查看所有任务
+/task run <任务ID>          # 立即执行任务
+```
+
+详细文档：[SCHEDULER.md](./SCHEDULER.md)
+
+## 通知通道
+
+支持通过多种通道接收定时任务通知：
+
+```bash
+# 添加邮件通知
+npm run notify -- --add-email
+
+# 添加 Telegram 通知
+npm run notify -- --add-telegram
+
+# 查看所有通道
+npm run notify
+
+# 测试通道
+npm run notify -- --test-all
+```
+
+任务执行结果会同时发送到微信和所有启用的通知通道。
+
+详细文档：[NOTIFICATIONS.md](./NOTIFICATIONS.md)
+
 ## 注意事项
 
 - **iLink 协议是实验性的** — 腾讯未正式公开文档，API 可能随时变更，不建议用于生产环境
 - **Token 会过期** — 出现 session 过期提示时重新运行 `npm run login`
 - **Kimi CLI 需要配置** — 确保 `kimi` 命令可用且已配置 API Key
+- **定时任务需要上下文** — 添加定时任务前需要先向机器人发送一条消息
 
 ## 与 weixin-claude-bot 的区别
 

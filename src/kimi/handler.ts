@@ -10,7 +10,12 @@ export type KimiResponse = {
   durationMs: number;
 };
 
-export type KimiOptions = Pick<Required<BotConfig>, "model" | "systemPrompt" | "cwd" | "maxTurns" | "planMode"> & {
+export type KimiOptions = {
+  model: string;
+  systemPrompt?: string;
+  cwd: string;
+  maxTurns: number;
+  planMode: boolean;
   yolo?: boolean;  // Auto-approve all actions
 };
 

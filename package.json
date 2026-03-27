@@ -9,6 +9,15 @@
     "start": "node --import tsx src/index.ts",
     "login": "node --import tsx src/login.ts",
     "config": "node --import tsx src/config.ts",
+    "schedule": "node --import tsx src/scheduler-cli.ts",
+    "notify": "node --import tsx src/notifications/cli.ts",
+    "agent:list": "node --import tsx src/agent/cli.ts list",
+    "agent:switch": "node --import tsx src/agent/cli.ts switch",
+    "agent:config": "node --import tsx src/agent/cli.ts config",
+    "agent:template": "node --import tsx src/agent/cli.ts template",
+    "agent:memory": "node --import tsx src/agent/cli.ts memory",
+    "agent:delete": "node --import tsx src/agent/cli.ts delete",
+    "migrate": "node scripts/migrate-to-multi-agent.js",
     "service:start": "pm2 start ecosystem.config.cjs",
     "service:stop": "pm2 stop weixin-kimi-bot",
     "service:restart": "pm2 restart weixin-kimi-bot",
@@ -18,10 +27,12 @@
     "service:monitor": "pm2 monitor"
   },
   "dependencies": {
-    "qrcode-terminal": "^0.12.0"
+    "qrcode-terminal": "^0.12.0",
+    "nodemailer": "^6.9.13"
   },
   "devDependencies": {
     "@types/node": "^22",
+    "@types/nodemailer": "^6.4.15",
     "tsx": "^4",
     "typescript": "^5"
   },
