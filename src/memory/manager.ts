@@ -65,11 +65,13 @@ export async function extractMemoryFromConversation(
 
 如果没有提取到有价值的信息，返回空对象：{}`;
 
+  // Kimi CLI 不支持 --system-prompt，将系统提示词合并到主 prompt
+  const finalPrompt = `${systemPrompt}\n\n=== 对话内容 ===\n\n${conversation}`;
+
   return new Promise((resolve, reject) => {
     const child = spawn("kimi", [
       "--quiet",
-      "--system-prompt", systemPrompt,
-      "--prompt", conversation,
+      "--prompt", finalPrompt,
     ], {
       stdio: ["ignore", "pipe", "pipe"],
     });
