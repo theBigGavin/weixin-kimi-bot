@@ -3,8 +3,8 @@
  * 
  * 管理多Agent的生命周期、配置和隔离
  */
-import { mkdir, readFile, writeFile, access } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { mkdir, readFile, writeFile, access, rename, rmdir } from "node:fs/promises";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -303,6 +303,35 @@ export class AgentManager {
     this.agents.delete(agentId);
     console.log(`[AgentManager] 删除Agent: ${agentId}`);
     return true;
+  }
+
+  /**
+   * 备份并删除Agent（用于重新绑定同一微信账号）
+   * @returns 备份目录路径
+   */
+  async backupAndDeleteAgent(agentId: string): Promise<string> {
+    const agentDir = join(BASE_DIR, agentId);
+    if (!existsSync(agentDir)) {
+      throw new Error(`Agent 目录不存在: ${agentId}`);
+    }
+
+    // 创建备份目录
+    const backupDir = join(homedir(), ".weixin-kimi-bot", "backups");
+    await mkdir(backupDir, { recursive: true });
+
+    // 生成备份名称：原名称_时间戳
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-").substring(0, 19);
+    const backupName = `${agentId}_${timestamp}`;
+    const backupPath = join(backupDir, backupName);
+
+    // 移动目录到备份
+    await rename(agentDir, backupPath);
+
+    // 从缓存中移除
+    this.agents.delete(agentId);
+
+    console.log(`[AgentManager] Agent ${agentId} 已备份到 ${backupPath}`);
+    return backupPath;
   }
 
   /**

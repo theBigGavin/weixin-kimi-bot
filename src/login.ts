@@ -116,6 +116,11 @@ async function main() {
       console.log("\n运行 npm start 启动 Bot");
       return;
     }
+    
+    // 备份并删除旧 Agent
+    console.log(`\n📦 正在备份旧 Agent: ${existingAgent.name}...`);
+    const backupPath = await agentManager.backupAndDeleteAgent(existingAgent.id);
+    console.log(`  ✅ 已备份到: ${backupPath}`);
   }
 
   // 选择能力模板
