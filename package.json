@@ -1,0 +1,36 @@
+{
+  "name": "weixin-kimi-bot",
+  "version": "0.1.0",
+  "description": "通过微信消息远程操控 Kimi Code CLI —— 基于腾讯 iLink 协议的微信 AI Bot",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "start": "node --import tsx src/index.ts",
+    "login": "node --import tsx src/login.ts",
+    "config": "node --import tsx src/config.ts",
+    "service:start": "pm2 start ecosystem.config.js",
+    "service:stop": "pm2 stop weixin-kimi-bot",
+    "service:restart": "pm2 restart weixin-kimi-bot",
+    "service:status": "pm2 status weixin-kimi-bot",
+    "service:logs": "pm2 logs weixin-kimi-bot",
+    "service:delete": "pm2 delete weixin-kimi-bot",
+    "service:monitor": "pm2 monitor"
+  },
+  "dependencies": {
+    "qrcode-terminal": "^0.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "tsx": "^4",
+    "typescript": "^5"
+  },
+  "keywords": [
+    "weixin",
+    "kimi",
+    "ai",
+    "bot",
+    "ilink"
+  ],
+  "license": "MIT"
+}
