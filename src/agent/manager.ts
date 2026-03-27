@@ -85,6 +85,14 @@ export class AgentManager {
   }
 
   /**
+   * 重新加载所有Agent（用于动态加载新Agent）
+   */
+  async reload(): Promise<void> {
+    // 重新加载所有Agent配置
+    await this.loadAllAgents();
+  }
+
+  /**
    * 加载所有Agent配置
    */
   private async loadAllAgents(): Promise<void> {

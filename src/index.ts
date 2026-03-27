@@ -476,7 +476,7 @@ function startDynamicAgentLoader(): void {
 
   setInterval(async () => {
     // 重新加载所有 Agent 列表
-    await agentManager.initialize();
+    await agentManager.reload();
     const allAgents = agentManager.getAllAgents();
 
     for (const agentConfig of allAgents) {
