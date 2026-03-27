@@ -7,7 +7,7 @@ import { spawn } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import type { ApiOptions } from "./ilink/api.js";
 import { scheduledTasksPath } from "./store.js";
-import { notificationManager, type NotificationMessage } from "./notifications/index.js";
+import { getNotificationManager, type NotificationMessage } from "./notifications/index.js";
 
 export interface ScheduledTask {
   id: string;
@@ -305,6 +305,8 @@ export class AgentTaskScheduler {
         metadata: { taskId: task.id, agentId: this.agentId, success, duration: durationMs },
       };
 
+      // 使用当前Agent的通知管理器
+      const notificationManager = getNotificationManager(this.agentId);
       await notificationManager.sendToAll(notificationMessage);
     } catch (e) {
       console.error(`[Scheduler:${this.agentId}] 发送通知失败:`, e);

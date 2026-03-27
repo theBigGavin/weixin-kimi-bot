@@ -2,10 +2,13 @@
  * 通知通道管理器
  * 
  * 管理所有通知通道的生命周期和消息发送
+ * 
+ * 支持多Agent隔离：每个Agent有独立的通知通道配置
  */
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { mkdir } from "node:fs/promises";
+import { homedir } from "node:os";
 import {
   type NotificationChannel,
   type NotificationMessage,
@@ -16,8 +19,20 @@ import {
 } from "./types.js";
 import { createEmailChannel, createTelegramChannel } from "./channels/index.js";
 
-const CHANNELS_FILE = process.env.NOTIFICATION_CHANNELS_FILE || 
-  `${process.env.HOME || process.env.USERPROFILE}/.weixin-kimi-bot/notification-channels.json`;
+const BASE_DIR = join(homedir(), ".weixin-kimi-bot");
+
+/**
+ * 获取通知通道文件路径
+ * 支持全局或Agent级别
+ */
+function getChannelsFilePath(agentId?: string): string {
+  if (agentId) {
+    return join(BASE_DIR, "agents", agentId, "notification-channels.json");
+  }
+  // 默认使用全局路径（向后兼容）
+  return process.env.NOTIFICATION_CHANNELS_FILE || 
+    join(BASE_DIR, "notification-channels.json");
+}
 
 /**
  * 通道工厂注册表
@@ -44,14 +59,25 @@ export function registerChannelType(
 
 /**
  * 通知通道管理器
+ * 
+ * 每个Agent应该使用独立的NotificationManager实例
  */
 export class NotificationManager {
   private channels: Map<string, NotificationChannel> = new Map();
   private initialized = false;
   private channelsFile: string;
+  private agentId?: string;
 
-  constructor(channelsFile?: string) {
-    this.channelsFile = channelsFile || CHANNELS_FILE;
+  constructor(agentId?: string, channelsFile?: string) {
+    this.agentId = agentId;
+    this.channelsFile = channelsFile || getChannelsFilePath(agentId);
+  }
+
+  /**
+   * 获取当前Agent ID
+   */
+  getAgentId(): string | undefined {
+    return this.agentId;
   }
 
   /**
@@ -68,7 +94,9 @@ export class NotificationManager {
     await this.loadChannels();
     
     this.initialized = true;
-    console.log(`[NotificationManager] 已初始化，加载了 ${this.channels.size} 个通道`);
+    
+    const agentInfo = this.agentId ? ` (Agent: ${this.agentId})` : "";
+    console.log(`[NotificationManager${agentInfo}] 已初始化，加载了 ${this.channels.size} 个通道`);
   }
 
   /**
@@ -76,8 +104,12 @@ export class NotificationManager {
    */
   private async loadChannels(): Promise<void> {
     if (!existsSync(this.channelsFile)) {
-      // 创建空的配置文件
-      writeFileSync(this.channelsFile, JSON.stringify([], null, 2));
+      // 兼容旧版本：如果全局文件存在，先读取它
+      const globalFile = getChannelsFilePath();
+      if (existsSync(globalFile) && this.agentId) {
+        console.log(`[NotificationManager] 迁移全局通知配置到 Agent ${this.agentId}`);
+        await this.migrateFromGlobal(globalFile);
+      }
       return;
     }
 
@@ -94,6 +126,24 @@ export class NotificationManager {
   }
 
   /**
+   * 从全局配置迁移
+   */
+  private async migrateFromGlobal(globalFile: string): Promise<void> {
+    try {
+      const data = readFileSync(globalFile, "utf-8");
+      const configs: ChannelConfig[] = JSON.parse(data);
+      
+      for (const config of configs) {
+        await this.addChannelFromConfig(config, true);
+      }
+      
+      console.log(`[NotificationManager] 已迁移 ${configs.length} 个通道`);
+    } catch (error) {
+      console.error("[NotificationManager] 迁移全局配置失败:", error);
+    }
+  }
+
+  /**
    * 保存通道配置
    */
   private async saveChannels(): Promise<void> {
@@ -102,7 +152,6 @@ export class NotificationManager {
       
       for (const channel of this.channels.values()) {
         // 这里应该存储原始配置，但为了简化，我们假设配置在创建时已经保存
-        // 实际项目中需要更好的配置管理
       }
       
       // 从文件读取现有配置并更新
@@ -172,6 +221,8 @@ export class NotificationManager {
         configs.push(config);
       }
 
+      // 确保目录存在
+      await mkdir(dirname(this.channelsFile), { recursive: true });
       writeFileSync(this.channelsFile, JSON.stringify(configs, null, 2));
     } catch (error) {
       console.error("[NotificationManager] 保存通道配置失败:", error);
@@ -196,8 +247,8 @@ export class NotificationManager {
     try {
       if (existsSync(this.channelsFile)) {
         const data = readFileSync(this.channelsFile, "utf-8");
-        const configs: ChannelConfig[] = JSON.parse(data);
-        const filtered = configs.filter(c => c.id !== channelId);
+        const allConfigs: ChannelConfig[] = JSON.parse(data);
+        const filtered = allConfigs.filter(c => c.id !== channelId);
         writeFileSync(this.channelsFile, JSON.stringify(filtered, null, 2));
       }
     } catch (error) {
@@ -239,8 +290,8 @@ export class NotificationManager {
     try {
       if (existsSync(this.channelsFile)) {
         const data = readFileSync(this.channelsFile, "utf-8");
-        const configs: ChannelConfig[] = JSON.parse(data);
-        const config = configs.find(c => c.id === channelId);
+        const allConfigs: ChannelConfig[] = JSON.parse(data);
+        const config = allConfigs.find(c => c.id === channelId);
         
         if (config) {
           config.enabled = enabled;
@@ -254,7 +305,7 @@ export class NotificationManager {
           }
 
           // 保存配置
-          writeFileSync(this.channelsFile, JSON.stringify(configs, null, 2));
+          writeFileSync(this.channelsFile, JSON.stringify(allConfigs, null, 2));
           return true;
         }
       }
@@ -327,5 +378,40 @@ export class NotificationManager {
   }
 }
 
-// 导出单例
-export const notificationManager = new NotificationManager();
+// ============ Agent隔离的通知管理器 ============
+
+const managers: Map<string, NotificationManager> = new Map();
+
+/**
+ * 获取或创建Agent的通知管理器
+ * 
+ * 如果没有指定agentId，返回全局管理器（向后兼容）
+ */
+export function getNotificationManager(agentId?: string): NotificationManager {
+  if (!agentId) {
+    // 尝试从环境变量获取
+    agentId = process.env.ACTIVE_AGENT_ID;
+  }
+  
+  const key = agentId || "global";
+  
+  if (!managers.has(key)) {
+    managers.set(key, new NotificationManager(agentId));
+  }
+  
+  return managers.get(key)!;
+}
+
+/**
+ * 移除Agent的通知管理器
+ */
+export function removeNotificationManager(agentId: string): void {
+  const manager = managers.get(agentId);
+  if (manager) {
+    manager.shutdown();
+    managers.delete(agentId);
+  }
+}
+
+// 导出单例（向后兼容，使用全局管理器）
+export const notificationManager = getNotificationManager();

@@ -12,10 +12,14 @@
 
 ## 快速开始
 
-### 1. 添加邮件通知通道
+### 为 Agent 添加通知通道
 
 ```bash
+# 为当前 Agent 添加邮件通知（默认）
 npm run notify -- --add-email
+
+# 为指定 Agent 添加通知
+ACTIVE_AGENT_ID=agent_xxx npm run notify -- --add-email
 ```
 
 按提示输入：
@@ -78,9 +82,22 @@ npm run notify -- --test-all
 
 ## 配置存储
 
-所有通道配置存储在 `~/.weixin-kimi-bot/notification-channels.json`
+> 🔒 **Agent 级别隔离**：每个 Agent 拥有**完全独立**的通知通道配置
 
-示例配置：
+```
+~/.weixin-kimi-bot/agents/{agent_id}/notification-channels.json
+```
+
+### 安全设计
+
+- 你的 Agent 的通知**不会**发送到朋友的邮箱
+- 朋友的 Agent 的通知**不会**发送到你的邮箱
+- 每个 Agent **完全独立**管理自己的通知通道
+
+这意味着你可以安全地帮朋友托管 Agent，而不会泄露彼此的通知设置。
+
+### 示例配置
+
 ```json
 [
   {

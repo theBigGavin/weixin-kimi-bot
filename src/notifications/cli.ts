@@ -10,14 +10,20 @@
  *   npm run notify -- --test <id>     # 测试通道
  */
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { notificationManager } from "./manager.js";
+import { getNotificationManager } from "./manager.js";
 import type { EmailChannelConfig, TelegramChannelConfig } from "./types.js";
 
-const CHANNELS_FILE = `${process.env.HOME || process.env.USERPROFILE}/.weixin-kimi-bot/notification-channels.json`;
+// 获取当前Agent ID（从环境变量）
+const ACTIVE_AGENT_ID = process.env.ACTIVE_AGENT_ID;
+
+// 获取通知管理器实例
+const notificationManager = getNotificationManager(ACTIVE_AGENT_ID);
 
 function showHelp() {
+  const agentInfo = ACTIVE_AGENT_ID ? ` (Agent: ${ACTIVE_AGENT_ID})` : "";
+  
   console.log(`
-通知通道管理工具
+通知通道管理工具${agentInfo}
 
 用法:
   npm run notify                    列出所有通道
@@ -29,11 +35,11 @@ function showHelp() {
   npm run notify -- --test-all      测试所有通道
 
 示例:
-  # 添加 Gmail 邮件通知
+  # 为当前Agent添加邮件通知
   npm run notify -- --add-email
 
-  # 添加 Telegram 通知
-  npm run notify -- --add-telegram
+  # 为指定Agent添加通知（使用环境变量）
+  ACTIVE_AGENT_ID=agent_xxx npm run notify -- --add-email
 `);
 }
 

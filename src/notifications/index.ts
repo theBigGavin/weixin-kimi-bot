@@ -64,4 +64,10 @@ export { EmailChannel, createEmailChannel } from "./channels/email.js";
 export { TelegramChannel, createTelegramChannel } from "./channels/telegram.js";
 
 // 管理器导出
-export { NotificationManager, notificationManager, registerChannelType } from "./manager.js";
+export { 
+  NotificationManager, 
+  notificationManager,
+  getNotificationManager,
+  removeNotificationManager,
+  registerChannelType 
+} from "./manager.js";

@@ -29,7 +29,7 @@ import {
   setContextToken,
 } from "./store.js";
 import { getScheduler, formatCronDescription } from "./scheduler.js";
-import { notificationManager } from "./notifications/index.js";
+import { getNotificationManager } from "./notifications/index.js";
 
 // Agent 相关导入
 import { agentManager } from "./agent/manager.js";
@@ -411,6 +411,14 @@ async function main() {
       await sendTextReply(api, chatId, ctxToken, text);
     });
     scheduler.start();
+
+    // 初始化通知管理器（每个Agent独立的通知配置）
+    const notificationManager = getNotificationManager(session.config.id);
+    try {
+      await notificationManager.initialize();
+    } catch (e) {
+      console.error(`[Notification:${session.config.id}] 初始化失败:`, e);
+    }
   }
 
   if (activeAgents.size === 0) {
@@ -422,14 +430,7 @@ async function main() {
   console.log(`活跃 Agent 数: ${activeAgents.size}`);
   console.log("按 Ctrl+C 停止\n");
 
-  // 定时任务已在各Agent初始化时启动
-
-  // 初始化通知管理器
-  try {
-    await notificationManager.initialize();
-  } catch (e) {
-    console.error("[Notification] 初始化失败:", e);
-  }
+  // 定时任务和通知管理器已在各Agent初始化时启动
 
   // 优雅关闭
   process.on("SIGINT", async () => {
@@ -439,7 +440,11 @@ async function main() {
       const sched = getScheduler(s.config.id);
       sched.stop();
     }
-    await notificationManager.shutdown();
+    // 停止所有通知管理器
+    for (const s of activeAgents.values()) {
+      const manager = getNotificationManager(s.config.id);
+      await manager.shutdown();
+    }
     process.exit(0);
   });
 
