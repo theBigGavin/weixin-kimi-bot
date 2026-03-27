@@ -148,6 +148,7 @@ export class AgentManager {
       name?: string;
       templateId?: string;
       workspacePath?: string;
+      copyModelFrom?: string; // 从指定Agent复制模型配置
     } = {}
   ): Promise<AgentConfig> {
     const template = getTemplateById(options.templateId || "general") || getDefaultTemplate();
@@ -160,6 +161,25 @@ export class AgentManager {
     
     // 创建工作目录
     const workspacePath = options.workspacePath || await createWorkspace(agentId);
+
+    // 确定模型配置：优先从指定Agent复制，否则使用模板默认值
+    let modelConfig = {
+      model: template.defaults.model,
+      maxTurns: template.defaults.maxTurns,
+      temperature: template.defaults.temperature,
+    };
+
+    if (options.copyModelFrom) {
+      const sourceAgent = this.agents.get(options.copyModelFrom);
+      if (sourceAgent) {
+        modelConfig = {
+          model: sourceAgent.ai.model,
+          maxTurns: sourceAgent.ai.maxTurns,
+          temperature: sourceAgent.ai.temperature ?? template.defaults.temperature,
+        };
+        console.log(`[AgentManager] 从 ${sourceAgent.name} 复制模型配置: ${modelConfig.model}`);
+      }
+    }
 
     const config: AgentConfig = {
       id: agentId,
@@ -174,10 +194,10 @@ export class AgentManager {
         createdAt: Date.now(),
       },
       ai: {
-        model: template.defaults.model,
+        model: modelConfig.model,
         templateId: template.id,
-        maxTurns: template.defaults.maxTurns,
-        temperature: template.defaults.temperature,
+        maxTurns: modelConfig.maxTurns,
+        temperature: modelConfig.temperature,
       },
       memory: {
         enabled: true,

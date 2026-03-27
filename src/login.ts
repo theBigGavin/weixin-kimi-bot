@@ -106,6 +106,8 @@ async function main() {
 
   // 检查是否已存在此微信账号的Agent
   const existingAgent = agentManager.findAgentByWechat(result.accountId);
+  let copyModelFrom: string | undefined;
+
   if (existingAgent) {
     console.log(`\n⚠️ 此微信账号已绑定 Agent: ${existingAgent.name}`);
     const overwrite = await prompt("是否创建新的 Agent? (y/N): ");
@@ -121,6 +123,23 @@ async function main() {
     console.log(`\n📦 正在备份旧 Agent: ${existingAgent.name}...`);
     const backupPath = await agentManager.backupAndDeleteAgent(existingAgent.id);
     console.log(`  ✅ 已备份到: ${backupPath}`);
+
+    // 询问是否复制模型配置
+    const copyModel = await prompt(`\n是否复制旧 Agent 的 LLM 配置 (${existingAgent.ai.model})? (Y/n): `);
+    if (copyModel.toLowerCase() !== "n") {
+      copyModelFrom = existingAgent.id;
+    }
+  } else {
+    // 检查是否有其他Agent可以复制配置
+    const allAgents = agentManager.getAllAgents();
+    if (allAgents.length > 0) {
+      const firstAgent = allAgents[0];
+      console.log(`\n💡 检测到已有 Agent: ${firstAgent.name} (模型: ${firstAgent.ai.model})`);
+      const copyModel = await prompt("是否复制其 LLM 配置? (Y/n): ");
+      if (copyModel.toLowerCase() !== "n") {
+        copyModelFrom = firstAgent.id;
+      }
+    }
   }
 
   // 选择能力模板
@@ -142,6 +161,7 @@ async function main() {
     name: agentName,
     templateId,
     workspacePath,
+    copyModelFrom,
   });
 
   console.log(`\n✅ Agent 创建成功！`);
