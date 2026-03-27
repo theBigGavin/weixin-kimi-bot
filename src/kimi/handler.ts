@@ -52,10 +52,8 @@ export async function askKimi(prompt: string, opts: KimiOptions): Promise<KimiRe
     args.push("--model", opts.model);
   }
   
-  // Add system prompt if specified
-  if (opts.systemPrompt) {
-    args.push("--system-prompt", opts.systemPrompt);
-  }
+  // Note: kimi CLI doesn't support --system-prompt flag
+  // System prompt will be prepended to the main prompt below
   
   // Add max steps per turn if specified
   if (opts.maxTurns) {
@@ -72,8 +70,14 @@ export async function askKimi(prompt: string, opts: KimiOptions): Promise<KimiRe
     args.push("--yolo");
   }
   
-  // Add the prompt
-  args.push("--prompt", prompt);
+  // Build the final prompt (prepend system prompt if provided)
+  let finalPrompt = prompt;
+  if (opts.systemPrompt) {
+    // Combine system prompt with user prompt
+    // Using a clear separator to help the model understand the structure
+    finalPrompt = `${opts.systemPrompt}\n\n=== 用户消息 ===\n\n${prompt}`;
+  }
+  args.push("--prompt", finalPrompt);
 
   return new Promise((resolve, reject) => {
     const child = spawn("kimi", args, {
