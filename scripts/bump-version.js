@@ -28,7 +28,7 @@ if (!["major", "minor", "patch"].includes(type)) {
 
 // 读取当前版本
 const versionPath = join(__dirname, "..", "src", "version.ts");
-const versionContent = readFileSync(versionPath, "utf-8");
+let versionContent = readFileSync(versionPath, "utf-8");
 
 const majorMatch = versionContent.match(/major:\s*(\d+)/);
 const minorMatch = versionContent.match(/minor:\s*(\d+)/);

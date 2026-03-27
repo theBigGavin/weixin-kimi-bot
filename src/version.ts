@@ -10,7 +10,7 @@
 export const VERSION = {
   major: 0,
   minor: 3,
-  patch: 1,
+  patch: 2,
   
   /** 完整版本号 */
   get full(): string {
@@ -21,7 +21,7 @@ export const VERSION = {
   date: "2026-03-27",
   
   /** 版本说明 */
-  description: "多Agent架构重构，支持多微信账号绑定",
+  description: "bump version to v0.3.1",
 };
 
 /** 提交哈希（由构建时注入） */
