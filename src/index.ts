@@ -32,6 +32,113 @@ import {
 const SESSION_EXPIRED_ERRCODE = -14;
 const SESSION_PAUSE_MS = 60 * 60 * 1000; // 1 hour
 
+// --- Bot Commands ---
+
+const COMMANDS = {
+  help: {
+    desc: "显示帮助信息",
+    usage: "/help",
+  },
+  status: {
+    desc: "查看 Bot 状态",
+    usage: "/status",
+  },
+  plan: {
+    desc: "开启规划模式（执行复杂任务前制定计划）",
+    usage: "/plan <你的任务>",
+  },
+  yolo: {
+    desc: "开启自动确认模式（⚠️ 自动批准所有操作，慎用！）",
+    usage: "/yolo <你的任务>",
+  },
+  reset: {
+    desc: "重置当前对话上下文",
+    usage: "/reset",
+  },
+  config: {
+    desc: "查看当前配置",
+    usage: "/config",
+  },
+};
+
+function parseCommand(text: string): { command: string; args: string } | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("/")) return null;
+  
+  const spaceIndex = trimmed.indexOf(" ");
+  if (spaceIndex === -1) {
+    return { command: trimmed.slice(1).toLowerCase(), args: "" };
+  }
+  
+  return {
+    command: trimmed.slice(1, spaceIndex).toLowerCase(),
+    args: trimmed.slice(spaceIndex + 1).trim(),
+  };
+}
+
+function handleBotCommand(command: string, args: string, kimiOpts: KimiOptions): { response: string; options?: KimiOptions } | null {
+  switch (command) {
+    case "help":
+    case "h":
+      return {
+        response: `🤖 **微信 Kimi Bot 命令列表**\n\n${Object.entries(COMMANDS)
+          .map(([name, info]) => `/${name} - ${info.desc}\n  用法: ${info.usage}`)
+          .join("\n\n")}\n\n💡 直接发送消息即可与 Kimi 对话`,
+      };
+    
+    case "status":
+      return {
+        response: `📊 **Bot 状态**\n\n` +
+          `模型: ${kimiOpts.model}\n` +
+          `工作目录: ${kimiOpts.cwd}\n` +
+          `最大轮次: ${kimiOpts.maxTurns}\n` +
+          `规划模式: ${kimiOpts.planMode ? "开启" : "关闭"}\n\n` +
+          `✅ 服务运行正常`,
+      };
+    
+    case "config":
+      return {
+        response: `⚙️ **当前配置**\n\n` +
+          `模型: ${kimiOpts.model}\n` +
+          `最大轮次: ${kimiOpts.maxTurns}\n` +
+          `工作目录: ${kimiOpts.cwd}\n` +
+          `规划模式: ${kimiOpts.planMode ? "开启" : "关闭"}\n` +
+          `系统提示: ${kimiOpts.systemPrompt || "(无)"}\n\n` +
+          `使用 npm run config 修改配置`,
+      };
+    
+    case "reset":
+      return {
+        response: "🔄 对话上下文已重置（下次对话将使用新的上下文）",
+      };
+    
+    case "plan":
+      if (!args) {
+        return {
+          response: "❌ 请在 /plan 后输入你的任务\n\n用法: /plan 我要重构这个项目的代码结构",
+        };
+      }
+      return {
+        response: "",
+        options: { ...kimiOpts, planMode: true },
+      };
+    
+    case "yolo":
+      if (!args) {
+        return {
+          response: "❌ 请在 /yolo 后输入你的任务\n\n用法: /yolo 自动修复所有 bug",
+        };
+      }
+      return {
+        response: "🚀 已开启自动确认模式（将自动批准所有操作）\n",
+        options: { ...kimiOpts, yolo: true },
+      };
+    
+    default:
+      return null;
+  }
+}
+
 // --- Message text extraction ---
 
 function extractText(msg: WeixinMessage): string {
@@ -141,6 +248,51 @@ async function handleMessage(
   }
 
   console.log(`\n📩 收到消息 from ${fromUser}: ${text.substring(0, 80)}${text.length > 80 ? "..." : ""}`);
+
+  // Check for bot commands
+  const commandInfo = parseCommand(text);
+  if (commandInfo) {
+    console.log(`  📝 检测到命令: /${commandInfo.command}`);
+    
+    const result = handleBotCommand(commandInfo.command, commandInfo.args, kimiOpts);
+    if (result) {
+      // If there's a direct response (not empty), send it
+      if (result.response) {
+        try {
+          await sendTextReply(api, fromUser, contextToken, result.response);
+          console.log(`  📤 已发送命令回复`);
+        } catch (err) {
+          console.error(`  ❌ 发送回复失败:`, err);
+        }
+      }
+      
+      // If there are options (e.g., /plan with args), forward to Kimi with modified options
+      if (result.options && commandInfo.args) {
+        const effectiveOpts = result.options;
+        showTyping(api, fromUser, contextToken);
+        
+        try {
+          console.log(`  🤖 正在调用 Kimi CLI (${effectiveOpts.model}, 规划模式: ${effectiveOpts.planMode})...`);
+          const response = await askKimi(commandInfo.args, effectiveOpts);
+          console.log(`  ✅ Kimi 响应完成 (${(response.durationMs / 1000).toFixed(1)}s)`);
+          
+          await sendTextReply(api, fromUser, contextToken, response.text);
+          console.log(`  📤 已发送回复 (${response.text.length} chars)`);
+        } catch (err) {
+          console.error(`  ❌ 处理失败:`, err);
+          await sendTextReply(
+            api,
+            fromUser,
+            contextToken,
+            `处理消息时出错: ${err instanceof Error ? err.message : String(err)}`,
+          ).catch(() => {});
+        }
+      }
+      return;
+    }
+    // Unknown command, fall through to normal Kimi processing
+    console.log(`  ⚠️ 未知命令，转发给 Kimi 处理`);
+  }
 
   // Show typing indicator
   showTyping(api, fromUser, contextToken);

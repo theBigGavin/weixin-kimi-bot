@@ -9,7 +9,7 @@
     "start": "node --import tsx src/index.ts",
     "login": "node --import tsx src/login.ts",
     "config": "node --import tsx src/config.ts",
-    "service:start": "pm2 start ecosystem.config.js",
+    "service:start": "pm2 start ecosystem.config.cjs",
     "service:stop": "pm2 stop weixin-kimi-bot",
     "service:restart": "pm2 restart weixin-kimi-bot",
     "service:status": "pm2 status weixin-kimi-bot",

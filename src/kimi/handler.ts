@@ -10,7 +10,57 @@ export type KimiResponse = {
   durationMs: number;
 };
 
-export type KimiOptions = Pick<Required<BotConfig>, "model" | "systemPrompt" | "cwd" | "maxTurns" | "planMode">;
+export type KimiOptions = Pick<Required<BotConfig>, "model" | "systemPrompt" | "cwd" | "maxTurns" | "planMode"> & {
+  yolo?: boolean;  // Auto-approve all actions
+};
+
+/**
+ * Kimi CLI slash commands that are supported in interactive mode but not in --quiet mode.
+ * We convert them to equivalent text prompts.
+ */
+const SLASH_COMMANDS: Record<string, string> = {
+  "/help": `Hello! I'm Kimi Code CLI, an AI assistant that can help you with software engineering tasks.
+
+## What I can do
+
+- Answer questions about your codebase
+- Read, write, and modify files
+- Run shell commands and scripts
+- Analyze and fix bugs
+- Write tests and documentation
+- And much more!
+
+## Tips
+
+- Be specific in your requests
+- I can access your local filesystem
+- I work best when given clear context
+
+Type your question or task and I'll help you out!`,
+  "/clear": "(Context cleared - starting fresh conversation)",
+};
+
+/**
+ * Convert slash commands to equivalent text prompts.
+ * Kimi CLI's slash commands only work in interactive mode, not in --quiet mode.
+ */
+function preprocessPrompt(prompt: string): string {
+  const trimmed = prompt.trim();
+  
+  // Check if the prompt is a known slash command
+  const lowerTrimmed = trimmed.toLowerCase();
+  if (SLASH_COMMANDS[lowerTrimmed]) {
+    return SLASH_COMMANDS[lowerTrimmed];
+  }
+  
+  // Handle /help with arguments (like /help tools)
+  if (lowerTrimmed.startsWith("/help ")) {
+    return `Please explain: ${trimmed.slice(6)}`;
+  }
+  
+  // Return original prompt if not a slash command
+  return prompt;
+}
 
 /**
  * Send a prompt to Kimi CLI and collect the text response.
@@ -18,6 +68,9 @@ export type KimiOptions = Pick<Required<BotConfig>, "model" | "systemPrompt" | "
  */
 export async function askKimi(prompt: string, opts: KimiOptions): Promise<KimiResponse> {
   const start = Date.now();
+  
+  // Preprocess prompt to handle slash commands
+  const processedPrompt = preprocessPrompt(prompt);
   
   // Build kimi command arguments
   const args: string[] = [];
@@ -45,8 +98,13 @@ export async function askKimi(prompt: string, opts: KimiOptions): Promise<KimiRe
     args.push("--plan");
   }
   
+  // Add yolo mode if enabled (auto-approve all actions)
+  if (opts.yolo) {
+    args.push("--yolo");
+  }
+  
   // Add the prompt
-  args.push("--prompt", prompt);
+  args.push("--prompt", processedPrompt);
 
   return new Promise((resolve, reject) => {
     const child = spawn("kimi", args, {

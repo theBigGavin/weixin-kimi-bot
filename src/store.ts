@@ -108,7 +108,7 @@ const DEFAULT_CONFIG: Required<BotConfig> = {
   model: "kimi-code/kimi-for-coding",
   systemPrompt: "",
   cwd: process.cwd(),
-  maxTurns: 10,
+  maxTurns: 100,
   planMode: false,
 };
 
