@@ -134,6 +134,7 @@ npm run agent:delete <agent-id>
 /template      # 查看/切换能力模板
 /memory        # 查看长期记忆
 /prompt        # 预览系统提示词
+/ver           # 查看Bot版本信息
 ```
 
 ## 长期记忆系统
