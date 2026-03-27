@@ -76,14 +76,25 @@ function parseCommand(text: string): { command: string; args: string } | null {
   };
 }
 
-function handleBotCommand(command: string, args: string, kimiOpts: KimiOptions): { response: string; options?: KimiOptions } | null {
+function handleBotCommand(command: string, args: string, kimiOpts: KimiOptions): { 
+  response: string; 
+  options?: KimiOptions;
+  forwardToKimi?: boolean;
+} | null {
   switch (command) {
     case "help":
     case "h":
       return {
-        response: `🤖 **微信 Kimi Bot 命令列表**\n\n${Object.entries(COMMANDS)
-          .map(([name, info]) => `/${name} - ${info.desc}\n  用法: ${info.usage}`)
-          .join("\n\n")}\n\n💡 直接发送消息即可与 Kimi 对话`,
+        response: `🤖 **微信 Kimi Bot 命令列表**
+
+**Bot 专属命令：**
+${Object.entries(COMMANDS)
+  .map(([name, info]) => `/${name} - ${info.desc}`)
+  .join("\n")}
+
+💡 直接发送消息即可与 Kimi 对话
+
+**注意：** Kimi CLI 的内置命令（如 /tools, /cost 等）只在终端交互模式下可用，微信 Bot 模式暂不支持。`,
       };
     
     case "status":
@@ -290,8 +301,9 @@ async function handleMessage(
       }
       return;
     }
-    // Unknown command, fall through to normal Kimi processing
-    console.log(`  ⚠️ 未知命令，转发给 Kimi 处理`);
+    // Unknown command, forward to Kimi as a slash command
+    console.log(`  🔄 未知 Bot 命令，透传给 Kimi CLI: ${text.trim()}`);
+    // Fall through to normal Kimi processing with the original text
   }
 
   // Show typing indicator

@@ -156,6 +156,8 @@ Verification URL: https://www.kimi.com/code/authorize_device?user_code=XXXX-XXXX
 /plan 我要重构这个项目的代码结构，先制定详细计划
 ```
 
+> **⚠️ 注意**：Kimi CLI 的内置 `/` 命令（如 `/tools`, `/cost`, `/compact` 等）只在交互式 TUI 模式下工作，微信 Bot 模式（API 模式）暂不支持。如需使用这些命令，请直接在终端运行 `kimi` 进入交互模式。
+
 > **💡 提示**：如果要在后台运行（SSH 断开后继续服务），请先完成本节的前台启动和登录，然后查看【后台服务运行】章节。
 
 ### 5. 后台服务运行（推荐）

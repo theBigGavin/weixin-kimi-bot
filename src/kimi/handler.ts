@@ -15,68 +15,32 @@ export type KimiOptions = Pick<Required<BotConfig>, "model" | "systemPrompt" | "
 };
 
 /**
- * Kimi CLI slash commands that are supported in interactive mode but not in --quiet mode.
- * We convert them to equivalent text prompts.
+ * Check if a prompt is a Kimi slash command.
  */
-const SLASH_COMMANDS: Record<string, string> = {
-  "/help": `Hello! I'm Kimi Code CLI, an AI assistant that can help you with software engineering tasks.
-
-## What I can do
-
-- Answer questions about your codebase
-- Read, write, and modify files
-- Run shell commands and scripts
-- Analyze and fix bugs
-- Write tests and documentation
-- And much more!
-
-## Tips
-
-- Be specific in your requests
-- I can access your local filesystem
-- I work best when given clear context
-
-Type your question or task and I'll help you out!`,
-  "/clear": "(Context cleared - starting fresh conversation)",
-};
-
-/**
- * Convert slash commands to equivalent text prompts.
- * Kimi CLI's slash commands only work in interactive mode, not in --quiet mode.
- */
-function preprocessPrompt(prompt: string): string {
+function isSlashCommand(prompt: string): boolean {
   const trimmed = prompt.trim();
-  
-  // Check if the prompt is a known slash command
-  const lowerTrimmed = trimmed.toLowerCase();
-  if (SLASH_COMMANDS[lowerTrimmed]) {
-    return SLASH_COMMANDS[lowerTrimmed];
-  }
-  
-  // Handle /help with arguments (like /help tools)
-  if (lowerTrimmed.startsWith("/help ")) {
-    return `Please explain: ${trimmed.slice(6)}`;
-  }
-  
-  // Return original prompt if not a slash command
-  return prompt;
+  return trimmed.startsWith("/") && !trimmed.startsWith("//");
 }
 
 /**
  * Send a prompt to Kimi CLI and collect the text response.
  * Kimi CLI runs in a subprocess with access to the local filesystem.
+ * 
+ * For slash commands (like /help, /tools), we use interactive mode
+ * because --quiet mode doesn't support them.
  */
 export async function askKimi(prompt: string, opts: KimiOptions): Promise<KimiResponse> {
   const start = Date.now();
-  
-  // Preprocess prompt to handle slash commands
-  const processedPrompt = preprocessPrompt(prompt);
+  const isSlashCmd = isSlashCommand(prompt);
   
   // Build kimi command arguments
   const args: string[] = [];
   
-  // Use quiet mode for non-interactive output
-  args.push("--quiet");
+  // For slash commands, we need interactive mode
+  // For normal prompts, use quiet mode
+  if (!isSlashCmd) {
+    args.push("--quiet");
+  }
   
   // Add model if specified
   if (opts.model) {
@@ -104,7 +68,7 @@ export async function askKimi(prompt: string, opts: KimiOptions): Promise<KimiRe
   }
   
   // Add the prompt
-  args.push("--prompt", processedPrompt);
+  args.push("--prompt", prompt);
 
   return new Promise((resolve, reject) => {
     const child = spawn("kimi", args, {
@@ -163,8 +127,13 @@ export async function askKimi(prompt: string, opts: KimiOptions): Promise<KimiRe
       // In quiet mode, kimi outputs to stdout even with exit code 0
       // We consider it successful if we got any output
       if (output.trim()) {
+        // Clean up the output - remove ANSI escape codes for slash commands
+        const cleanText = isSlashCmd 
+          ? output.replace(/\x1b\[[0-9;]*m/g, "").replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").trim()
+          : output.trim();
+        
         resolve({
-          text: output.trim(),
+          text: cleanText || "(Kimi 没有返回文本内容)",
           durationMs,
         });
         return;
