@@ -29,9 +29,17 @@ export interface AgentConfig {
   ai: {
     model: string;
     templateId: string;
-    customSystemPrompt?: string;
     maxTurns: number;
     temperature?: number;
+  };
+
+  /** 模板覆盖配置（用户自定义） */
+  templateOverride?: {
+    /** 完全覆盖的系统提示词 */
+    systemPrompt?: string;
+    /** 追加的系统提示词 */
+    systemPromptAppend?: string;
+    updatedAt: number;
   };
 
   /** 记忆配置 */

@@ -10,6 +10,7 @@ import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import type { AgentConfig, AgentRuntime, CapabilityTemplate, AgentMemory } from "./types.js";
 import { getTemplateById, getDefaultTemplate } from "../templates/definitions.js";
+import { customTemplateManager } from "../templates/custom-manager.js";
 
 const BASE_DIR = join(homedir(), ".weixin-kimi-bot", "agents");
 
@@ -282,11 +283,19 @@ export class AgentManager {
    * 更新Agent能力模板
    */
   async applyTemplate(agentId: string, templateId: string): Promise<AgentConfig | null> {
-    const template = getTemplateById(templateId);
-    if (!template) return null;
-
     const agent = this.agents.get(agentId);
     if (!agent) return null;
+
+    // 获取模板（支持自定义模板）
+    await customTemplateManager.initialize();
+    let template = customTemplateManager.buildFinalTemplate(templateId);
+    
+    // 回退到预置模板
+    if (!template) {
+      template = getTemplateById(templateId) || null;
+    }
+    
+    if (!template) return null;
 
     const updated: AgentConfig = {
       ...agent,
@@ -389,7 +398,30 @@ export class AgentManager {
     const config = this.agents.get(agentId);
     if (!config) return null;
 
-    const template = getTemplateById(config.ai.templateId) || getDefaultTemplate();
+    // 初始化自定义模板管理器
+    await customTemplateManager.initialize();
+
+    // 获取模板（支持自定义模板和覆盖）
+    let template = customTemplateManager.buildFinalTemplate(config.ai.templateId);
+    if (!template) {
+      template = getDefaultTemplate();
+    }
+
+    // 应用 Agent 级别的模板覆盖
+    if (config.templateOverride) {
+      if (config.templateOverride.systemPrompt) {
+        template = {
+          ...template,
+          systemPrompt: config.templateOverride.systemPrompt,
+        };
+      } else if (config.templateOverride.systemPromptAppend) {
+        template = {
+          ...template,
+          systemPrompt: template.systemPrompt + "\n\n" + config.templateOverride.systemPromptAppend,
+        };
+      }
+    }
+
     const memory = await this.loadAgentMemory(agentId) || initializeMemory();
 
     return {

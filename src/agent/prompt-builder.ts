@@ -56,8 +56,8 @@ export function buildSystemPrompt(
   }
 
   // 4. 用户自定义提示词（追加）
-  if (runtime.config.ai.customSystemPrompt) {
-    parts.push("## 额外指令\n" + runtime.config.ai.customSystemPrompt);
+  if (runtime.config.templateOverride?.systemPromptAppend) {
+    parts.push("## 额外指令\n" + runtime.config.templateOverride.systemPromptAppend);
   }
 
   // 5. 工作目录信息

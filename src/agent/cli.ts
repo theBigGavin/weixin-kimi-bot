@@ -156,8 +156,8 @@ async function showConfig(agentId?: string) {
   console.log(`  能力模板: ${template?.icon} ${template?.name} (${agent.ai.templateId})`);
   console.log(`  最大轮次: ${agent.ai.maxTurns}`);
   console.log(`  温度: ${agent.ai.temperature ?? "默认"}`);
-  if (agent.ai.customSystemPrompt) {
-    console.log(`  自定义提示词: ${agent.ai.customSystemPrompt.substring(0, 50)}...`);
+  if (agent.templateOverride?.systemPromptAppend) {
+    console.log(`  自定义提示词: ${agent.templateOverride.systemPromptAppend.substring(0, 50)}...`);
   }
   console.log();
   console.log(`【功能开关】`);

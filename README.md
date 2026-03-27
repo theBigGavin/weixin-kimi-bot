@@ -148,6 +148,7 @@ Verification URL: https://www.kimi.com/code/authorize_device?user_code=XXXX-XXXX
 | `/memory` | 查看长期记忆 |
 | `/prompt` | 预览当前系统提示词 |
 | `/task` | 定时任务管理 |
+| `/ver` | 查看 Bot 版本信息 |
 
 **使用示例：**
 
@@ -159,7 +160,7 @@ Verification URL: https://www.kimi.com/code/authorize_device?user_code=XXXX-XXXX
 
 > **💡 提示**：如果要在后台运行（SSH 断开后继续服务），请先完成本节的前台启动和登录，然后查看【后台服务运行】章节。
 
-### 5. 后台服务运行（推荐）
+### 4. 后台服务运行（推荐）
 
 如果想让 Bot 在后台运行，即使 SSH 断开也能继续服务：
 
@@ -374,6 +375,20 @@ npm run notify -- --test-all
 | 权限模式 | 多种模式可选 | Kimi CLI 原生控制 |
 | 模型选择 | Claude 系列 | Kimi 系列 |
 | 规划模式 | 通过模型别名 | 原生 `--plan` 支持 |
+
+## 更新日志
+
+### v0.2.3 (2025-03-28)
+- 改进多 Agent 数据隔离机制
+- 新增 `/ver` 命令查看版本信息
+- 优化定时任务调度器
+
+### v0.2.0
+- 全新多 Agent 架构
+- 支持多个微信账号独立运行
+- 每个 Agent 拥有独立工作目录和记忆
+
+查看完整更新历史：[MIGRATION.md](./MIGRATION.md)
 
 ## License
 

@@ -107,17 +107,130 @@ async function handleAgentCommand(
       session.lastMemoryExtract.delete(fromUser);
       return "🔄 对话上下文已重置。系统提示词将在下一条消息重新注入。";
 
-    case "template":
+    case "template": {
+      const { getTemplates } = await import("./templates/definitions.js");
+      
       if (args === "list") {
-        const { getTemplates } = await import("./templates/definitions.js");
         const templates = getTemplates();
-        let response = "**可用能力模板**\n\n";
+        // 获取自定义模板
+        const { customTemplateManager } = await import("./templates/custom-manager.js");
+        await customTemplateManager.initialize();
+        const customTemplates = customTemplateManager.getAllTemplates();
+        
+        let response = "**📋 可用能力模板**\n\n";
+        
+        // 预置模板
+        response += "*预置模板:*\n";
         for (const t of templates) {
           response += `${t.icon} **${t.name}** (${t.id})\n${t.description}\n\n`;
         }
+        
+        // 自定义模板
+        if (customTemplates.length > 0) {
+          response += "*自定义模板:*\n";
+          for (const t of customTemplates) {
+            response += `${t.icon} **${t.name}** (${t.id})\n${t.description}${t.extends ? ` (继承自 ${t.extends})` : ""}\n\n`;
+          }
+        }
+        
+        response += "---\n\n使用 `/template switch <id>` 切换模板\n";
+        response += "使用 `/template custom <提示词>` 自定义当前模板";
         return response;
       }
-      return `**当前能力模板**\n\n${runtime.template.icon} **${runtime.template.name}**\n${runtime.template.description}\n\n发送 \`/template list\` 查看所有可用模板`;
+      
+      // 切换模板
+      if (args.startsWith("switch ")) {
+        const templateId = args.slice(7).trim();
+        const { getTemplateById } = await import("./templates/definitions.js");
+        const { customTemplateManager } = await import("./templates/custom-manager.js");
+        await customTemplateManager.initialize();
+        
+        // 检查预置模板
+        let template = getTemplateById(templateId);
+        // 检查自定义模板
+        if (!template) {
+          template = customTemplateManager.buildFinalTemplate(templateId) || undefined;
+        }
+        
+        if (!template) {
+          return `❌ 模板 "${templateId}" 不存在\n\n发送 \`/template list\` 查看可用模板`;
+        }
+        
+        // 更新 Agent 配置
+        const updated = await agentManager.applyTemplate(config.id, templateId);
+        if (updated) {
+          // 更新运行时
+          session.runtime.template = template;
+          session.conversationTurns.delete(fromUser);
+          return `✅ 已切换到模板: ${template.icon} **${template.name}**\n\n对话上下文已重置，新提示词将在下一条消息生效。`;
+        }
+        return "❌ 切换模板失败";
+      }
+      
+      // 自定义提示词（追加）
+      if (args.startsWith("custom ")) {
+        const customPrompt = args.slice(7).trim();
+        if (!customPrompt) {
+          return "❌ 请输入自定义提示词\n\n用法: `/template custom 你的自定义提示词`";
+        }
+        
+        // 保存到 Agent 配置
+        const updated = await agentManager.updateAgent(config.id, {
+          templateOverride: {
+            systemPromptAppend: customPrompt,
+            updatedAt: Date.now(),
+          },
+        });
+        
+        if (updated) {
+          // 更新运行时
+          session.config.templateOverride = updated.templateOverride;
+          // 重新构建模板
+          const newTemplate = await agentManager.buildRuntime(config.id);
+          if (newTemplate) {
+            session.runtime = newTemplate;
+          }
+          session.conversationTurns.delete(fromUser);
+          return `✅ 已添加自定义提示词\n\n追加内容:\n\`\`\`${customPrompt.substring(0, 100)}${customPrompt.length > 100 ? "..." : ""}\`\`\`\n\n对话上下文已重置，将在下一条消息生效。`;
+        }
+        return "❌ 保存自定义提示词失败";
+      }
+      
+      // 查看自定义提示词
+      if (args === "custom") {
+        if (config.templateOverride?.systemPromptAppend) {
+          return `**当前自定义提示词**\n\n\`\`\`\n${config.templateOverride.systemPromptAppend}\n\`\`\`\n\n使用 \`/template custom <新提示词>\` 修改\n使用 \`/template reset\` 清除自定义`;
+        }
+        return "📭 当前没有自定义提示词\n\n使用 `/template custom <提示词>` 添加";
+      }
+      
+      // 重置自定义
+      if (args === "reset") {
+        const updated = await agentManager.updateAgent(config.id, {
+          templateOverride: undefined,
+        });
+        if (updated) {
+          session.config.templateOverride = undefined;
+          const newTemplate = await agentManager.buildRuntime(config.id);
+          if (newTemplate) {
+            session.runtime = newTemplate;
+          }
+          session.conversationTurns.delete(fromUser);
+          return "✅ 已清除自定义提示词，恢复为模板默认";
+        }
+        return "❌ 重置失败";
+      }
+      
+      // 默认显示当前模板
+      let response = `**当前能力模板**\n\n${runtime.template.icon} **${runtime.template.name}**\n${runtime.template.description}\n\n`;
+      if (config.templateOverride?.systemPromptAppend) {
+        response += `*已添加自定义提示词*\n\n`;
+      }
+      response += "发送 `/template list` 查看所有模板\n";
+      response += "发送 `/template switch <id>` 切换模板\n";
+      response += "发送 `/template custom <提示词>` 自定义提示词";
+      return response;
+    }
 
     case "ver":
     case "version":
