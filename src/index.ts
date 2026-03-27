@@ -30,6 +30,7 @@ import {
 } from "./store.js";
 import { getScheduler, formatCronDescription } from "./scheduler.js";
 import { getNotificationManager } from "./notifications/index.js";
+import { getVersionInfo, VERSION } from "./version.js";
 
 // Agent 相关导入
 import { agentManager } from "./agent/manager.js";
@@ -66,6 +67,7 @@ const COMMANDS = {
   template: { desc: "查看/切换能力模板" },
   memory: { desc: "查看长期记忆" },
   prompt: { desc: "预览系统提示词" },
+  ver: { desc: "查看 Bot 版本信息" },
 };
 
 function parseCommand(text: string): { command: string; args: string } | null {
@@ -116,6 +118,10 @@ async function handleAgentCommand(
         return response;
       }
       return `**当前能力模板**\n\n${runtime.template.icon} **${runtime.template.name}**\n${runtime.template.description}\n\n发送 \`/template list\` 查看所有可用模板`;
+
+    case "ver":
+    case "version":
+      return getVersionInfo();
 
     case "memory":
       const { formatMemoryForPrompt } = await import("./memory/manager.js");

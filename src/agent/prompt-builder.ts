@@ -201,6 +201,7 @@ export function buildHelpPrompt(runtime: AgentRuntime): string {
 /status - 查看Agent状态
 /template - 查看/切换能力模板
 /memory - 管理长期记忆
+/ver - 查看Bot版本信息
 
 **当前角色：** ${template.name} ${template.icon}
 ${template.description}
