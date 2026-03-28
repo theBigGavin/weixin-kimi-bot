@@ -10,7 +10,7 @@
 export const VERSION = {
   major: 0,
   minor: 3,
-  patch: 14,
+  patch: 15,
   
   /** 完整版本号 */
   get full(): string {
@@ -21,7 +21,7 @@ export const VERSION = {
   date: "2026-03-28",
   
   /** 版本说明 */
-  description: "wip: 实现 /task create 自然语言解析功能",
+  description: "修复新Agent首次聊天 --continue 报错问题",
 };
 
 /** 提交哈希（由构建时注入） */
