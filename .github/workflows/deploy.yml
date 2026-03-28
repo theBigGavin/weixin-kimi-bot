@@ -1,0 +1,56 @@
+name: Deploy to Server
+
+on:
+  push:
+    branches: [ master, main ]
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build
+      run: npm run build
+      
+    - name: Deploy to server
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USER }}
+        key: ${{ secrets.SSH_KEY }}
+        port: ${{ secrets.SSH_PORT || 22 }}
+        script: |
+          cd ~/playground/weixin-kimi-bot
+          
+          # 备份当前版本（用于回滚）
+          cp -r dist dist.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true
+          
+          # 拉取最新代码
+          git pull origin master
+          
+          # 安装依赖并构建
+          npm ci
+          npm run build
+          
+          # 重启 PM2
+          pm2 reload weixin-kimi-bot --update-env
+          
+          # 检查状态
+          pm2 status weixin-kimi-bot
+          
+          # 清理旧备份（保留最近5个）
+          ls -t dist.backup.* 2>/dev/null | tail -n +6 | xargs rm -rf 2>/dev/null || true
+          
+          echo "✅ 部署完成"
