@@ -127,33 +127,18 @@ async function handleAgentCommand(
         }
       }
       
-      // 清除用户 Kimi session
+      // 清除用户 Kimi session 目录（所有Agent统一使用 .sessions/{userId}/）
       const cacheKey = `${fromUser}:workspace`;
       const cached = session.userWorkspaces.get(cacheKey);
       
       if (cached) {
         const userWorkspace: UserWorkspace = JSON.parse(cached);
-        
-        if (session.config.type === "founder" && session.config.projectSpace) {
-          // 创始Agent：删除整个 session 目录（软链接会一并删除，下次自动重建）
-          try {
-            await rm(userWorkspace.cwd, { recursive: true, force: true });
-            session.userWorkspaces.delete(cacheKey);
-            console.log(`  🗑️ 已重置创始Agent session: ${fromUser}`);
-          } catch (e) {
-            console.error(`  ⚠️ 重置 session 失败: ${e}`);
-          }
-        } else {
-          // 普通Agent：直接删除用户目录
-          if (existsSync(userWorkspace.cwd)) {
-            try {
-              await rm(userWorkspace.cwd, { recursive: true, force: true });
-              session.userWorkspaces.delete(cacheKey);
-              console.log(`  🗑️ 已清除用户工作目录: ${userWorkspace.cwd}`);
-            } catch (e) {
-              console.error(`  ⚠️ 清除用户目录失败: ${e}`);
-            }
-          }
+        try {
+          await rm(userWorkspace.cwd, { recursive: true, force: true });
+          session.userWorkspaces.delete(cacheKey);
+          console.log(`  🗑️ 已重置用户 session: ${fromUser}`);
+        } catch (e) {
+          console.error(`  ⚠️ 重置 session 失败: ${e}`);
         }
       }
       
@@ -557,11 +542,12 @@ async function getUserWorkspace(
   let cwd: string;
   let projectDir: string | undefined;
 
+  // 所有Agent统一使用 .sessions/{userId}/ 作为CWD（session隔离）
+  cwd = join(workspaceBase, ".sessions", userId);
+  await mkdir(cwd, { recursive: true });
+  
+  // 如果是创始Agent且有projectSpace，创建软链接
   if (isFounder && session.config.projectSpace) {
-    // 创始Agent：CWD 在 session 目录，通过软链接访问 projectSpace
-    cwd = join(workspaceBase, ".sessions", userId);
-    await mkdir(cwd, { recursive: true });
-    
     projectDir = session.config.projectSpace.path;
     
     // 创建指向 projectSpace 的软链接
@@ -571,20 +557,13 @@ async function getUserWorkspace(
       await symlink(projectDir, projectLink, "dir");
       console.log(`  🔗 创建项目软链接: ${projectLink} -> ${projectDir}`);
     }
-    
-    // 同时创建指向 workspace 的软链接，方便访问持久化空间
-    const workspaceLink = join(cwd, "workspace");
-    if (!existsSync(workspaceLink)) {
-      const { symlink } = await import("node:fs/promises");
-      await symlink(workspaceBase, workspaceLink, "dir");
-    }
-  } else {
-    // 普通Agent：直接在个人目录操作
-    cwd = join(workspaceBase, "users", userId);
-    if (!existsSync(cwd)) {
-      await mkdir(cwd, { recursive: true });
-      console.log(`  📁 创建用户工作目录: ${cwd}`);
-    }
+  }
+  
+  // 为所有Agent创建指向 workspace 的软链接，方便访问持久化空间
+  const workspaceLink = join(cwd, "workspace");
+  if (!existsSync(workspaceLink)) {
+    const { symlink } = await import("node:fs/promises");
+    await symlink(workspaceBase, workspaceLink, "dir");
   }
 
   const result: UserWorkspace = { cwd, projectDir };
