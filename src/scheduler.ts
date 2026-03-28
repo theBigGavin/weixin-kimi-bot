@@ -3,7 +3,7 @@
  * 
  * 每个Agent拥有独立的定时任务
  */
-import { spawn } from "node:child_process";
+import { spawn as spawnChild } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import type { ApiOptions } from "./ilink/api.js";
 import { scheduledTasksPath } from "./store.js";
@@ -21,6 +21,13 @@ export interface ScheduledTask {
   lastRun?: number;
   lastResult?: string;
   createdAt: number;
+}
+
+export interface ParsedTaskInfo {
+  name: string;           // 任务名称
+  cron: string;           // crontab 表达式
+  command: string;        // 执行命令
+  description: string;    // 执行时间描述
 }
 
 interface TaskState {
@@ -315,7 +322,7 @@ export class AgentTaskScheduler {
 
   private runCommand(command: string): Promise<string> {
     return new Promise((resolve, reject) => {
-      const child = spawn(command, [], {
+      const child = spawnChild(command, [], {
         shell: true,
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -491,4 +498,103 @@ export function removeScheduler(agentId: string): void {
 // 导出兼容旧代码的函数
 export function parseCronExpression(cron: string) {
   return parseCron(cron);
+}
+
+// ============ 自然语言解析 ============
+
+import { spawn } from "node:child_process";
+
+/**
+ * 使用 Kimi AI 解析自然语言描述为任务信息
+ */
+export async function parseNaturalLanguageToCron(
+  description: string,
+  model: string,
+  cwd: string
+): Promise<ParsedTaskInfo> {
+  const systemPrompt = `你是一个定时任务解析助手。请将用户的自然语言描述解析为结构化的定时任务信息。
+
+你需要输出一个 JSON 对象，包含以下字段：
+- name: 任务名称（简短，不超过20字）
+- cron: crontab 表达式（5个字段：分 时 日 月 周）
+- command: 执行命令（使用 echo 输出提醒内容）
+- description: 执行时间的友好描述
+
+Crontab 格式说明：
+- 分(0-59) 时(0-23) 日(1-31) 月(1-12) 周(0-6, 0=周日)
+- * 表示任意值
+- / 表示步长，如 */5 表示每5分钟
+- - 表示范围，如 8-21 表示8点到21点
+- , 表示列表，如 1,3,5 表示1、3、5
+
+常见模式：
+- 每小时: 0 * * * *
+- 每天8点: 0 8 * * *
+- 工作日9点: 0 9 * * 1-5
+- 每周日20点: 0 20 * * 0
+- 每月1日: 0 0 1 * *
+- 每2小时: 0 */2 * * *
+- 8点到21点每小时: 0 8-21/1 * * * 或 0 8-21 * * *
+
+请只输出 JSON，不要输出其他内容。`;
+
+  const fullPrompt = `${systemPrompt}\n\n用户描述: ${description}\n\n请解析为 JSON 格式:`;
+
+  return new Promise((resolve, reject) => {
+    const args = ["--quiet", "--model", model, "--prompt", fullPrompt];
+    
+    const child = spawn("kimi", args, {
+      cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    // 设置30秒超时
+    const timeoutId = setTimeout(() => {
+      child.kill("SIGTERM");
+      reject(new Error("解析超时，请重试"));
+    }, 30000);
+
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+
+    child.stdout.on("data", (data: Buffer) => stdout.push(data));
+    child.stderr.on("data", (data: Buffer) => stderr.push(data));
+
+    child.on("error", (err) => {
+      clearTimeout(timeoutId);
+      reject(new Error(`调用 Kimi 失败: ${err.message}`));
+    });
+
+    child.on("close", (code) => {
+      clearTimeout(timeoutId);
+      const output = Buffer.concat(stdout).toString("utf-8").trim();
+      const errorOutput = Buffer.concat(stderr).toString("utf-8").trim();
+
+      if (code !== 0 && code !== null) {
+        reject(new Error(`Kimi 执行失败: ${errorOutput || `退出码 ${code}`}`));
+        return;
+      }
+
+      try {
+        // 尝试从输出中提取 JSON
+        const jsonMatch = output.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+          reject(new Error(`无法解析 Kimi 输出: ${output.substring(0, 200)}`));
+          return;
+        }
+
+        const parsed = JSON.parse(jsonMatch[0]) as ParsedTaskInfo;
+        
+        // 验证必要字段
+        if (!parsed.name || !parsed.cron || !parsed.command) {
+          reject(new Error(`解析结果缺少必要字段: ${JSON.stringify(parsed)}`));
+          return;
+        }
+
+        resolve(parsed);
+      } catch (e) {
+        reject(new Error(`解析 JSON 失败: ${e instanceof Error ? e.message : String(e)}\n输出: ${output.substring(0, 200)}`));
+      }
+    });
+  });
 }

@@ -30,7 +30,7 @@ import {
   getContextToken,
   setContextToken,
 } from "./store.js";
-import { getScheduler, formatCronDescription } from "./scheduler.js";
+import { getScheduler, formatCronDescription, parseNaturalLanguageToCron, type ParsedTaskInfo } from "./scheduler.js";
 import { getNotificationManager } from "./notifications/index.js";
 import { getVersionInfo, VERSION } from "./version.js";
 
@@ -60,6 +60,16 @@ interface AgentSession {
 }
 
 const activeAgents: Map<string, AgentSession> = new Map();
+
+// 待确认的定时任务 (userId -> { taskInfo, agentId, chatId, contextToken, expiresAt })
+interface PendingTask {
+  taskInfo: ParsedTaskInfo;
+  agentId: string;
+  chatId: string;
+  contextToken: string;
+  expiresAt: number;
+}
+const pendingTasks: Map<string, PendingTask> = new Map();
 
 // ============ 命令处理 ============
 
@@ -93,7 +103,8 @@ async function handleAgentCommand(
   session: AgentSession,
   command: string,
   args: string,
-  fromUser: string
+  fromUser: string,
+  contextToken: string
 ): Promise<string | null> {
   const { runtime, config } = session;
 
@@ -346,8 +357,28 @@ async function handleAgentCommand(
         const description = args.slice(7).trim();
         if (!description) return "❌ 请提供任务描述\n\n用法: `/task create <描述>`";
         
-        // 返回确认消息，实际创建在对话中完成
-        return `📝 创建任务: ${description}\n\n请确认或修改下面的crontab表达式，然后我会创建任务。\n\n（功能开发中，请直接告诉AI你要创建什么样的定时任务）`;
+        // 异步解析自然语言
+        try {
+          const { parseNaturalLanguageToCron } = await import("./scheduler.js");
+          const taskInfo = await parseNaturalLanguageToCron(
+            description,
+            config.ai.model,
+            config.workspace.path
+          );
+          
+          // 存储待确认任务
+          pendingTasks.set(fromUser, {
+            taskInfo,
+            agentId: config.id,
+            chatId: fromUser,
+            contextToken: contextToken,
+            expiresAt: Date.now() + 5 * 60 * 1000, // 5分钟过期
+          });
+          
+          return `🤖 解析结果\n\n任务名称: ${taskInfo.name}\n执行时间: ${taskInfo.description}\nCrontab: \`${taskInfo.cron}\`\n执行命令: ${taskInfo.command.substring(0, 50)}${taskInfo.command.length > 50 ? "..." : ""}\n\n回复 "确认" 创建此任务，或 "取消" 放弃\n(5分钟内有效)`;
+        } catch (e) {
+          return `❌ 解析失败: ${e instanceof Error ? e.message : String(e)}\n\n请尝试用更清晰的描述，或直接发送消息让我帮你创建任务。`;
+        }
       }
       
       // 默认：显示帮助
@@ -593,12 +624,61 @@ async function handleMessage(
   // 更新统计
   await agentManager.updateStats(session.config.id, false);
 
+  // 检查待确认的任务
+  const pendingTask = pendingTasks.get(fromUser);
+  if (pendingTask) {
+    const trimmedText = text.trim();
+    
+    // 检查是否过期
+    if (Date.now() > pendingTask.expiresAt) {
+      pendingTasks.delete(fromUser);
+    } else if (trimmedText === "确认" || trimmedText === "确定" || trimmedText === "yes") {
+      // 创建任务
+      const scheduler = getScheduler(pendingTask.agentId);
+      try {
+        const task = scheduler.addTask({
+          name: pendingTask.taskInfo.name,
+          cron: pendingTask.taskInfo.cron,
+          command: pendingTask.taskInfo.command,
+          chatId: pendingTask.chatId,
+          contextToken: contextToken,
+          enabled: true,
+        });
+        
+        pendingTasks.delete(fromUser);
+        
+        const desc = formatCronDescription(task.cron);
+        await sendTextReply(
+          session.api,
+          fromUser,
+          contextToken,
+          `✅ 任务创建成功！\n\n任务: ${task.name}\nID: \`${task.id}\`\n时间: ${desc}\n命令: ${task.command.substring(0, 50)}${task.command.length > 50 ? "..." : ""}`
+        );
+        console.log(`  📤 已确认创建任务: ${task.id}`);
+      } catch (e) {
+        pendingTasks.delete(fromUser);
+        await sendTextReply(
+          session.api,
+          fromUser,
+          contextToken,
+          `❌ 创建任务失败: ${e instanceof Error ? e.message : String(e)}`
+        );
+      }
+      return;
+    } else if (trimmedText === "取消" || trimmedText === "cancel" || trimmedText === "no") {
+      pendingTasks.delete(fromUser);
+      await sendTextReply(session.api, fromUser, contextToken, "❌ 已取消任务创建");
+      console.log(`  📤 已取消任务创建`);
+      return;
+    }
+  }
+
   // 检查命令
   const commandInfo = parseCommand(text);
   if (commandInfo) {
     console.log(`  📝 检测到命令: /${commandInfo.command}`);
     
-    const response = await handleAgentCommand(session, commandInfo.command, commandInfo.args, fromUser);
+    const response = await handleAgentCommand(session, commandInfo.command, commandInfo.args, fromUser, contextToken);
     if (response) {
       await sendTextReply(session.api, fromUser, contextToken, response);
       console.log(`  📤 已发送命令回复`);
