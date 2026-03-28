@@ -10,7 +10,7 @@
 export const VERSION = {
   major: 0,
   minor: 3,
-  patch: 13,
+  patch: 14,
   
   /** 完整版本号 */
   get full(): string {
@@ -21,7 +21,7 @@ export const VERSION = {
   date: "2026-03-28",
   
   /** 版本说明 */
-  description: "添加未知命令保护、Kimi超时机制、/task命令支持",
+  description: "wip: 实现 /task create 自然语言解析功能",
 };
 
 /** 提交哈希（由构建时注入） */
