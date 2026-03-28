@@ -10,7 +10,7 @@
 export const VERSION = {
   major: 0,
   minor: 3,
-  patch: 9,
+  patch: 10,
   
   /** 完整版本号 */
   get full(): string {
