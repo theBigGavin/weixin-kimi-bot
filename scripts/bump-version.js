@@ -31,18 +31,56 @@ if (!["major", "minor", "patch"].includes(type)) {
   process.exit(1);
 }
 
-// ========== 1. 获取功能描述（从最近一次 commit）==========
+// ========== 1. 获取功能描述（从最近一次非版本 commit）==========
 
-let featureDescription = "";
-try {
-  const lastCommitMsg = execSync("git log -1 --pretty=%B", { encoding: "utf-8" }).trim();
-  // 提取第一行，去掉 commit 类型前缀
-  featureDescription = lastCommitMsg
+/**
+ * 检查 commit message 是否是版本提交
+ */
+function isVersionCommit(message) {
+  const firstLine = message.split("\n")[0].trim();
+  return firstLine.startsWith("release:") || 
+         firstLine.startsWith("chore: bump version") ||
+         firstLine.match(/^chore:\s*bump/);
+}
+
+/**
+ * 提取功能描述
+ */
+function extractDescription(message) {
+  return message
     .split("\n")[0]
     .replace(/^(chore|feat|fix|docs|refactor|test|style)(\(.+\))?:\s*/i, "")
     .substring(0, 80);
-} catch {
-  // 忽略错误
+}
+
+/**
+ * 查找最近一个非版本提交的描述
+ */
+function getFeatureDescription() {
+  try {
+    // 获取最近 10 条提交，逐条检查
+    const recentCommits = execSync("git log -10 --pretty=%s", { encoding: "utf-8" }).trim().split("\n");
+    
+    for (const commitMsg of recentCommits) {
+      if (!isVersionCommit(commitMsg)) {
+        return extractDescription(commitMsg);
+      }
+    }
+    
+    // 如果都是版本提交，返回空字符串
+    return "";
+  } catch (e) {
+    console.log("⚠️  获取提交历史失败:", e.message);
+    return "";
+  }
+}
+
+const featureDescription = getFeatureDescription();
+
+if (featureDescription) {
+  console.log(`📝 提取到功能描述: ${featureDescription}`);
+} else {
+  console.log("⚠️  未找到功能描述（最近提交都是版本更新）");
 }
 
 // ========== 2. 读取并更新版本 ==========
