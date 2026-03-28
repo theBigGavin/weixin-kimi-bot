@@ -71,6 +71,7 @@ const COMMANDS = {
   memory: { desc: "查看长期记忆" },
   prompt: { desc: "预览系统提示词" },
   ver: { desc: "查看 Bot 版本信息" },
+  task: { desc: "定时任务管理 (list/create/delete/toggle)" },
 };
 
 function parseCommand(text: string): { command: string; args: string } | null {
@@ -292,8 +293,81 @@ async function handleAgentCommand(
       const prompt = buildSystemPrompt(runtime);
       return `**当前系统提示词**\n\n\`\`\`\n${prompt.substring(0, 2000)}${prompt.length > 2000 ? "\n... (已截断)" : ""}\n\`\`\``;
 
+    case "task": {
+      const { getScheduler, formatCronDescription } = await import("./scheduler.js");
+      const scheduler = getScheduler(config.id);
+      
+      // 列出所有任务
+      if (args === "list" || args === "") {
+        const tasks = scheduler.getAllTasks();
+        if (tasks.length === 0) {
+          return "📋 暂无定时任务\n\n使用 `/task create <描述>` 创建任务";
+        }
+        
+        let response = "📋 定时任务列表\n\n";
+        for (const task of tasks) {
+          const status = task.enabled ? "✅" : "⏸️";
+          const desc = formatCronDescription(task.cron);
+          response += `${status} **${task.name}**\n   ID: \`${task.id}\`\n   ${desc}\n   命令: ${task.command.substring(0, 30)}...\n\n`;
+        }
+        response += "操作: `/task delete <id>` 删除 | `/task toggle <id>` 启用/禁用";
+        return response;
+      }
+      
+      // 删除任务
+      if (args.startsWith("delete ")) {
+        const taskId = args.slice(7).trim();
+        if (!taskId) return "❌ 请提供任务ID\n\n用法: `/task delete <id>`";
+        
+        const success = scheduler.deleteTask(taskId);
+        return success 
+          ? `✅ 已删除任务: ${taskId}` 
+          : `❌ 删除失败，任务不存在: ${taskId}`;
+      }
+      
+      // 启用/禁用任务
+      if (args.startsWith("toggle ")) {
+        const taskId = args.slice(7).trim();
+        if (!taskId) return "❌ 请提供任务ID\n\n用法: `/task toggle <id>`";
+        
+        const tasks = scheduler.getAllTasks();
+        const task = tasks.find(t => t.id === taskId);
+        if (!task) return `❌ 任务不存在: ${taskId}`;
+        
+        const newState = !task.enabled;
+        const success = scheduler.toggleTask(taskId, newState);
+        return success 
+          ? `${newState ? "✅" : "⏸️"} 任务已${newState ? "启用" : "禁用"}: ${task.name}` 
+          : `❌ 操作失败`;
+      }
+      
+      // 创建任务 - 使用Kimi解析自然语言
+      if (args.startsWith("create ")) {
+        const description = args.slice(7).trim();
+        if (!description) return "❌ 请提供任务描述\n\n用法: `/task create <描述>`";
+        
+        // 返回确认消息，实际创建在对话中完成
+        return `📝 创建任务: ${description}\n\n请确认或修改下面的crontab表达式，然后我会创建任务。\n\n（功能开发中，请直接告诉AI你要创建什么样的定时任务）`;
+      }
+      
+      // 默认：显示帮助
+      return `**定时任务管理**\n\n用法:\n- \`/task list\` - 列出所有任务\n- \`/task create <描述>\` - 创建任务\n- \`/task delete <id>\` - 删除任务\n- \`/task toggle <id>\` - 启用/禁用任务`;
+    }
+
     default:
-      return null;
+      // 未知命令，返回提示而非传给Kimi
+      return `❓ 未知命令: /${command}
+
+支持的命令：
+/help - 显示帮助
+/status - 查看状态  
+/reset - 重置对话
+/template - 切换模板
+/memory - 查看记忆
+/ver - 版本信息
+/task - 定时任务管理 (list/create/delete/toggle)
+
+直接发送消息可与AI对话。`;
   }
 }
 
@@ -525,12 +599,11 @@ async function handleMessage(
     console.log(`  📝 检测到命令: /${commandInfo.command}`);
     
     const response = await handleAgentCommand(session, commandInfo.command, commandInfo.args, fromUser);
-    if (response !== null) {
+    if (response) {
       await sendTextReply(session.api, fromUser, contextToken, response);
       console.log(`  📤 已发送命令回复`);
       return;
     }
-    // 未知命令，继续处理
   }
 
   // 构建 Kimi 选项

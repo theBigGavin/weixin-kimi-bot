@@ -93,6 +93,29 @@ export async function askKimi(prompt: string, opts: KimiOptions): Promise<KimiRe
       stdio: ["ignore", "pipe", "pipe"],
     });
 
+    // 设置 5 分钟超时
+    const TIMEOUT_MS = 5 * 60 * 1000;
+    const timeoutId = setTimeout(() => {
+      console.error(`[Kimi] 响应超时 (${TIMEOUT_MS / 1000}s)，终止进程`);
+      child.kill("SIGTERM");
+      
+      // 给 5 秒优雅退出时间，否则强制杀死
+      setTimeout(() => {
+        if (!child.killed) {
+          child.kill("SIGKILL");
+        }
+      }, 5000);
+      
+      reject(new Error(
+        "⏱️ Kimi 响应超时（5分钟）\n\n" +
+        "可能原因：\n" +
+        "1. 任务过于复杂\n" +
+        "2. Kimi 等待用户确认（建议使用 --yolo 模式或简化任务）\n" +
+        "3. 网络问题\n\n" +
+        "请重试或简化任务。"
+      ));
+    }, TIMEOUT_MS);
+
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
 
@@ -105,6 +128,7 @@ export async function askKimi(prompt: string, opts: KimiOptions): Promise<KimiRe
     });
 
     child.on("error", (err) => {
+      clearTimeout(timeoutId);  // 清除超时
       if (err.message.includes("ENOENT")) {
         reject(new Error(
           "未找到 kimi 命令。请先安装 Kimi CLI:\n" +
@@ -117,6 +141,7 @@ export async function askKimi(prompt: string, opts: KimiOptions): Promise<KimiRe
     });
 
     child.on("close", (code) => {
+      clearTimeout(timeoutId);  // 清除超时
       const durationMs = Date.now() - start;
       const output = Buffer.concat(stdout).toString("utf-8");
       const errorOutput = Buffer.concat(stderr).toString("utf-8");
