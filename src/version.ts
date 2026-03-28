@@ -10,7 +10,7 @@
 export const VERSION = {
   major: 0,
   minor: 4,
-  patch: 1,
+  patch: 2,
   
   /** 完整版本号 */
   get full(): string {
@@ -21,7 +21,7 @@ export const VERSION = {
   date: "2026-03-28",
   
   /** 版本说明 */
-  description: "实现 /longtask 耗时任务系统，支持进度报告、自动识别、并发控制和历史记录",
+  description: "在帮助信息中添加 /longtask 详细说明",
 };
 
 /** 提交哈希（由构建时注入） */
