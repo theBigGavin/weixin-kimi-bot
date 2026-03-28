@@ -147,8 +147,22 @@ Verification URL: https://www.kimi.com/code/authorize_device?user_code=XXXX-XXXX
 | `/template` | 查看/切换能力模板 |
 | `/memory` | 查看长期记忆 |
 | `/prompt` | 预览当前系统提示词 |
-| `/task` | 定时任务管理 |
+| `/task` | 定时任务管理（详见下方） |
 | `/ver` | 查看 Bot 版本信息 |
+
+#### 定时任务命令 `/task`
+
+| 子命令 | 说明 | 示例 |
+|--------|------|------|
+| `create <描述>` | 用自然语言创建定时任务 | `/task create 每天早上9点搜集AI资讯` |
+| `add <名称> <crontab> <命令>` | 精确添加任务 | `/task add "每日早报" "0 8 * * *" "kimi --quiet --prompt '总结今日新闻'"` |
+| `list` | 查看所有任务 | `/task list` |
+| `run <ID>` | 立即执行某个任务 | `/task run task_001` |
+| `del <ID>` | 删除任务 | `/task del task_001` |
+| `toggle <ID>` | 启用/禁用任务 | `/task toggle task_001` |
+| `example` | 添加示例任务 | `/task example` |
+
+详细文档：[SCHEDULER.md](./SCHEDULER.md)
 
 **使用示例：**
 
