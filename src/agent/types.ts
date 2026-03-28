@@ -9,6 +9,8 @@
 export interface AgentConfig {
   id: string;
   name: string;
+  /** Agent 类型: founder(创始Agent) | assistant(普通助手) */
+  type?: "founder" | "assistant";
   createdAt: number;
   updatedAt: number;
 
@@ -19,10 +21,31 @@ export interface AgentConfig {
     avatar?: string;
   };
 
-  /** 工作目录配置 */
+  /** 工作目录配置 (持久化空间，所有Agent都有) */
   workspace: {
     path: string;
     createdAt: number;
+    /** 是否启用 PARA 模式管理 */
+    paraEnabled?: boolean;
+  };
+
+  /** 
+   * 项目空间配置 (仅创始Agent有)
+   * 指向一个实际的项目目录，用于共同维护代码项目
+   */
+  projectSpace?: {
+    path: string;
+    repository?: string;
+    description?: string;
+    /** 项目维护规则 */
+    rules?: {
+      /** 禁止存放临时文件 */
+      noTemporaryFiles?: boolean;
+      /** 必须使用 Git */
+      gitRequired?: boolean;
+      /** 启用 CI/CD */
+      ciCdEnabled?: boolean;
+    };
   };
 
   /** AI 能力配置 */

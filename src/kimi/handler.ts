@@ -14,6 +14,8 @@ export type KimiOptions = {
   model: string;
   systemPrompt?: string;
   cwd: string;
+  /** Session 存储目录（用于隔离不同用户的 session） */
+  sessionDir?: string;
   maxTurns: number;
   planMode: boolean;
   yolo?: boolean;  // Auto-approve all actions

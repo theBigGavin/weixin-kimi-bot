@@ -115,15 +115,33 @@ async function handleAgentCommand(
         }
       }
       
-      // 清除用户 Kimi session 目录（下次会新建 session）
-      const userDir = session.userWorkspaces.get(fromUser);
-      if (userDir && existsSync(userDir)) {
-        try {
-          await rm(userDir, { recursive: true, force: true });
-          session.userWorkspaces.delete(fromUser);
-          console.log(`  🗑️ 已清除用户 session 目录: ${userDir}`);
-        } catch (e) {
-          console.error(`  ⚠️ 清除用户目录失败: ${e}`);
+      // 清除用户 Kimi session
+      const cacheKey = `${fromUser}:workspace`;
+      const cached = session.userWorkspaces.get(cacheKey);
+      
+      if (cached) {
+        const userWorkspace: UserWorkspace = JSON.parse(cached);
+        
+        if (session.config.type === "founder" && session.config.projectSpace) {
+          // 创始Agent：删除整个 session 目录（软链接会一并删除，下次自动重建）
+          try {
+            await rm(userWorkspace.cwd, { recursive: true, force: true });
+            session.userWorkspaces.delete(cacheKey);
+            console.log(`  🗑️ 已重置创始Agent session: ${fromUser}`);
+          } catch (e) {
+            console.error(`  ⚠️ 重置 session 失败: ${e}`);
+          }
+        } else {
+          // 普通Agent：直接删除用户目录
+          if (existsSync(userWorkspace.cwd)) {
+            try {
+              await rm(userWorkspace.cwd, { recursive: true, force: true });
+              session.userWorkspaces.delete(cacheKey);
+              console.log(`  🗑️ 已清除用户工作目录: ${userWorkspace.cwd}`);
+            } catch (e) {
+              console.error(`  ⚠️ 清除用户目录失败: ${e}`);
+            }
+          }
         }
       }
       
@@ -346,31 +364,127 @@ async function showTyping(api: ApiOptions, userId: string, contextToken?: string
   }
 }
 
-// ============ 用户工作目录管理 ============
+// ============ 创始Agent提示词构建 ============
 
 /**
- * 获取/创建用户专属工作目录
- * 每个微信用户有独立的子目录，用于隔离 Kimi session
+ * 构建创始Agent的项目维护规范提示词
+ */
+function buildFounderPrompt(config: AgentConfig): string {
+  if (!config.projectSpace) return "";
+  
+  const project = config.projectSpace;
+  const workspace = config.workspace.path;
+  const projectName = project.description || "当前项目";
+  
+  return `
+
+## 项目维护规范 (ProjectSpace)
+
+你当前正在维护项目：${projectName}
+项目路径：${project.path}
+${project.repository ? `代码仓库：${project.repository}` : ""}
+
+### 目录结构说明
+当前目录 (${workspace}/.sessions/{userId}/) 包含：
+- ./project/ → 软链接到 ${project.path} (项目源码，操作此目录)
+- ./workspace/ → 软链接到 ${workspace} (你的持久化空间)
+
+### 工作规范
+
+**1. 整洁性原则**
+- 临时文件、过程性文件必须放在 ./workspace/ 下，禁止放入 ./project/
+- ./project/ 只存放：源码、配置、文档
+
+**2. 开发流程 (必须遵循)**
+每次修改前，按此 checklist：
+- [ ] 进入 ./project/ 目录
+- [ ] git status 确认无未提交变更
+- [ ] 全面了解变更影响范围
+- [ ] 在 ./workspace/Projects/${projectName.replace(/\s+/g, "_")}/ 写方案草稿
+- [ ] 给用户确认方案后再实施
+- [ ] 修改完成：git add . && git commit -m "wip: xxx"
+- [ ] 用户测试确认后：git commit -m "feat: 清晰描述" && git push
+- [ ] 更新版本：npm run deploy:patch
+
+**3. PARA 整理 (每周执行)**
+你的 workspace 应遵循 PARA 模式：
+- Projects/ - 进行中的项目（如本项目）
+- Areas/ - 持续维护的职责领域
+- Resources/ - 参考资料、学习笔记
+- Archives/ - 已完成或暂停的项目
+
+**4. CI/CD 利用**
+已配置 GitHub Actions，push 后自动构建。关注 Actions 状态。`;
+}
+
+// ============ 工作目录和 Session 管理 ============
+
+interface UserWorkspace {
+  /** 操作目录（Kimi 执行命令的 cwd） */
+  cwd: string;
+  /** 实际项目目录（用于创始Agent操作 projectSpace） */
+  projectDir?: string;
+}
+
+/**
+ * 获取用户的工作目录配置
+ * 
+ * 设计原则：
+ * - 创始Agent: 
+ *   - CWD: workspace/.sessions/{userId}/ (满足 Kimi session 绑定工作目录的机制)
+ *   - 通过软链接将 projectSpace 链接到 CWD/project，实现无侵入式操作
+ * - 普通Agent:
+ *   - CWD: workspace/users/{userId}/ (个人持久化空间)
  */
 async function getUserWorkspace(
   session: AgentSession,
   userId: string
-): Promise<string> {
-  // 检查缓存
-  let userDir = session.userWorkspaces.get(userId);
-  if (userDir) {
-    return userDir;
+): Promise<UserWorkspace> {
+  const cacheKey = `${userId}:workspace`;
+  const cached = session.userWorkspaces.get(cacheKey);
+  if (cached) {
+    return JSON.parse(cached) as UserWorkspace;
   }
 
-  // 创建用户专属目录
-  userDir = join(session.config.workspace.path, "users", userId);
-  if (!existsSync(userDir)) {
-    await mkdir(userDir, { recursive: true });
-    console.log(`  📁 创建用户工作目录: ${userDir}`);
+  const isFounder = session.config.type === "founder";
+  const workspaceBase = session.config.workspace.path;
+  
+  let cwd: string;
+  let projectDir: string | undefined;
+
+  if (isFounder && session.config.projectSpace) {
+    // 创始Agent：CWD 在 session 目录，通过软链接访问 projectSpace
+    cwd = join(workspaceBase, ".sessions", userId);
+    await mkdir(cwd, { recursive: true });
+    
+    projectDir = session.config.projectSpace.path;
+    
+    // 创建指向 projectSpace 的软链接
+    const projectLink = join(cwd, "project");
+    if (!existsSync(projectLink)) {
+      const { symlink } = await import("node:fs/promises");
+      await symlink(projectDir, projectLink, "dir");
+      console.log(`  🔗 创建项目软链接: ${projectLink} -> ${projectDir}`);
+    }
+    
+    // 同时创建指向 workspace 的软链接，方便访问持久化空间
+    const workspaceLink = join(cwd, "workspace");
+    if (!existsSync(workspaceLink)) {
+      const { symlink } = await import("node:fs/promises");
+      await symlink(workspaceBase, workspaceLink, "dir");
+    }
+  } else {
+    // 普通Agent：直接在个人目录操作
+    cwd = join(workspaceBase, "users", userId);
+    if (!existsSync(cwd)) {
+      await mkdir(cwd, { recursive: true });
+      console.log(`  📁 创建用户工作目录: ${cwd}`);
+    }
   }
 
-  session.userWorkspaces.set(userId, userDir);
-  return userDir;
+  const result: UserWorkspace = { cwd, projectDir };
+  session.userWorkspaces.set(cacheKey, JSON.stringify(result));
+  return result;
 }
 
 // ============ 核心消息处理 ============
@@ -422,20 +536,25 @@ async function handleMessage(
   // 构建 Kimi 选项
   const turns = session.conversationTurns.get(fromUser) || 0;
   
-  // 获取用户专属工作目录（用于隔离 Kimi session）
-  const userCwd = await getUserWorkspace(session, fromUser);
+  // 获取用户专属工作目录配置
+  const userWorkspace = await getUserWorkspace(session, fromUser);
   
   // 构建系统提示词（每轮都注入，确保记忆始终可用）
-  const systemPrompt = buildSystemPrompt(session.runtime, {
+  let systemPrompt = buildSystemPrompt(session.runtime, {
     includeMemory: session.config.memory.enabled,
   });
+  
+  // 如果是创始Agent，注入项目维护规范
+  if (session.config.type === "founder" && session.config.projectSpace) {
+    systemPrompt += buildFounderPrompt(session.config);
+  }
 
   const kimiOpts: KimiOptions & { systemPrompt?: string } = {
     model: session.config.ai.model,
-    cwd: userCwd,  // 使用用户专属目录
+    cwd: userWorkspace.cwd,  // CWD 在 session 目录（控制 session 存储位置）
     maxTurns: session.config.ai.maxTurns,
     planMode: false,
-    systemPrompt: systemPrompt,  // 始终注入系统提示词
+    systemPrompt: systemPrompt,
     continueSession: turns > 0,  // 非第一轮时复用 session
   };
 
