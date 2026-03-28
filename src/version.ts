@@ -10,7 +10,7 @@
 export const VERSION = {
   major: 0,
   minor: 3,
-  patch: 17,
+  patch: 18,
   
   /** 完整版本号 */
   get full(): string {
@@ -21,7 +21,7 @@ export const VERSION = {
   date: "2026-03-28",
   
   /** 版本说明 */
-  description: "统一所有Agent使用 .sessions/{userId}/ 作为session目录",
+  description: "PM2 配置使用编译后的 dist/index.js 而非 tsx",
 };
 
 /** 提交哈希（由构建时注入） */
