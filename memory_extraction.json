@@ -1,0 +1,42 @@
+{
+  "facts": [
+    {
+      "content": "用户正在开发/规划一个耗时任务管理系统（/longtask命令）",
+      "category": "project",
+      "importance": 4
+    },
+    {
+      "content": "用户对进度报告的要求：频率30秒/次，显示格式包含百分比、当前文件名、状态",
+      "category": "project",
+      "importance": 4
+    },
+    {
+      "content": "用户要求任务并发限制为最多4个同时运行",
+      "category": "project",
+      "importance": 3
+    },
+    {
+      "content": "用户希望系统具备自动识别耗时任务并提示使用/longtask的能力",
+      "category": "project",
+      "importance": 3
+    },
+    {
+      "content": "用户与技术助手讨论技术实现方案，可能是开发者或产品经理",
+      "category": "work",
+      "importance": 2
+    }
+  ],
+  "projects": [
+    {
+      "name": "/longtask 耗时任务系统",
+      "description": "微信Kimi Bot的耗时任务管理功能，支持进度报告、并发控制和自动识别耗时任务",
+      "status": "active",
+      "techStack": ["TypeScript", "Kimi CLI"]
+    }
+  ],
+  "userProfile": {
+    "name": null,
+    "role": "开发者/产品经理",
+    "preferences": ["进度报告频率30秒/次", "并发限制4个任务", "清晰的进度可视化"]
+  }
+}

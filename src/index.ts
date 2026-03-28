@@ -22,7 +22,7 @@ import {
   TypingStatus,
   type WeixinMessage,
 } from "./ilink/types.js";
-import { askKimi, checkKimiInstalled, ensureKimiAuthenticated } from "./kimi/handler.js";
+import { askKimi, checkKimiInstalled, ensureKimiAuthenticated, isLikelyLongTask } from "./kimi/handler.js";
 import type { KimiOptions } from "./kimi/handler.js";
 import {
   loadSyncBuf,
@@ -33,6 +33,8 @@ import {
 import { getScheduler, formatCronDescription, parseNaturalLanguageToCron, type ParsedTaskInfo } from "./scheduler.js";
 import { getNotificationManager } from "./notifications/index.js";
 import { getVersionInfo, VERSION } from "./version.js";
+import { getLongTaskManager, formatProgressMessage } from "./longtask/manager.js";
+import type { LongTask, ProgressInfo } from "./longtask/types.js";
 
 // Agent 相关导入
 import { agentManager } from "./agent/manager.js";
@@ -82,6 +84,7 @@ const COMMANDS = {
   prompt: { desc: "预览系统提示词" },
   ver: { desc: "查看 Bot 版本信息" },
   task: { desc: "定时任务管理 (list/create/delete/toggle)" },
+  longtask: { desc: "耗时任务管理 (submit/status/list/cancel)" },
 };
 
 function parseCommand(text: string): { command: string; args: string } | null {
@@ -370,6 +373,106 @@ async function handleAgentCommand(
       return `**定时任务管理**\n\n用法:\n- \`/task list\` - 列出所有任务\n- \`/task create <描述>\` - 创建任务\n- \`/task delete <id>\` - 删除任务\n- \`/task toggle <id>\` - 启用/禁用任务`;
     }
 
+    case "longtask": {
+      const ltManager = getLongTaskManager(config.id);
+      
+      // 列出任务
+      if (args === "list" || args === "") {
+        const tasks = ltManager.getUserTasks(fromUser);
+        const history = ltManager.loadHistory(10);
+        
+        if (tasks.length === 0 && history.length === 0) {
+          return "📋 暂无耗时任务\n\n使用 `/longtask <任务描述>` 启动一个耗时任务";
+        }
+        
+        let response = "📋 耗时任务\n\n";
+        
+        if (tasks.length > 0) {
+          response += "*进行中的任务:*\n";
+          for (const t of tasks) {
+            const statusEmoji = t.status === "running" ? "🔄" : t.status === "pending" ? "⏳" : "✅";
+            const lastProgress = t.progressLogs[t.progressLogs.length - 1];
+            response += `${statusEmoji} \`${t.id}\` ${lastProgress?.percent || 0}% - ${lastProgress?.step || t.status}\n`;
+            if (t.status === "pending") {
+              response += `   排队位置: 前面还有 ${ltManager.getQueueLength()} 个任务\n`;
+            }
+          }
+          response += "\n";
+        }
+        
+        if (history.length > 0) {
+          response += "*最近历史 (最近10条):*\n";
+          for (const h of history.slice().reverse()) {
+            const statusEmoji = h.status === "completed" ? "✅" : h.status === "failed" ? "❌" : "🚫";
+            response += `${statusEmoji} \`${h.id}\` ${h.finalProgress.percent}% - ${h.finalProgress.step}\n`;
+          }
+        }
+        
+        response += "\n操作: `/longtask status <id>` | `/longtask cancel <id>`";
+        return response;
+      }
+      
+      // 查看状态
+      if (args.startsWith("status ")) {
+        const taskId = args.slice(7).trim();
+        const task = ltManager.getTask(taskId);
+        if (!task || task.userId !== fromUser) {
+          return `❌ 任务不存在: ${taskId}`;
+        }
+        const progress = task.progressLogs[task.progressLogs.length - 1];
+        return formatProgressMessage(task, progress);
+      }
+      
+      // 取消任务
+      if (args.startsWith("cancel ")) {
+        const taskId = args.slice(7).trim();
+        const success = await ltManager.cancel(taskId);
+        return success 
+          ? `🚫 已取消任务: ${taskId}` 
+          : `❌ 取消失败，任务不存在或已完成: ${taskId}`;
+      }
+      
+      // 提交新任务
+      const prompt = args.trim();
+      if (!prompt) {
+        return `**耗时任务管理**\n\n用法:\n- \`/longtask <任务描述>\` - 启动耗时任务\n- \`/longtask list\` - 查看任务列表\n- \`/longtask status <id>\` - 查看任务进度\n- \`/longtask cancel <id>\` - 取消任务`;
+      }
+      
+      // 获取用户工作目录
+      const userWorkspace = await getUserWorkspace(session, fromUser);
+      
+      // 构建系统提示词
+      let systemPrompt = buildSystemPrompt(session.runtime, {
+        includeMemory: session.config.memory.enabled,
+      });
+      if (session.config.type === "founder" && session.config.projectSpace) {
+        systemPrompt += buildFounderPrompt(session.config);
+      }
+      
+      const task = ltManager.submit({
+        agentId: config.id,
+        userId: fromUser,
+        chatId: fromUser,
+        contextToken,
+        prompt,
+        cwd: userWorkspace.cwd,
+        model: config.ai.model,
+        systemPrompt,
+        maxTurns: config.ai.maxTurns,
+      });
+      
+      const queueLen = ltManager.getQueueLength();
+      let response = `🚀 耗时任务已提交\n\nID: \`${task.id}\`\n状态: ${task.status === "pending" ? "排队中" : "运行中"}\n`;
+      if (task.status === "pending" && queueLen > 0) {
+        response += `排队位置: 前面还有 ${queueLen} 个任务\n`;
+      }
+      response += `\n每 ${ltManager.getReportIntervalSec()} 秒会收到进度报告。\n`;
+      response += `使用 \`/longtask status ${task.id}\` 查看进度\n`;
+      response += `使用 \`/longtask cancel ${task.id}\` 取消任务`;
+      
+      return response;
+    }
+
     default:
       // 未知命令，返回提示而非传给Kimi
       return `❓ 未知命令: /${command}
@@ -382,6 +485,7 @@ async function handleAgentCommand(
 /memory - 查看记忆
 /ver - 版本信息
 /task - 定时任务管理 (list/create/delete/toggle)
+/longtask - 耗时任务管理 (submit/status/list/cancel)
 
 直接发送消息可与AI对话。`;
   }
@@ -671,6 +775,46 @@ async function handleMessage(
   // 获取用户专属工作目录配置
   const userWorkspace = await getUserWorkspace(session, fromUser);
   
+  // 构建系统提示词（每轮都注入，确保记忆始终可用）
+  let systemPrompt = buildSystemPrompt(session.runtime, {
+    includeMemory: session.config.memory.enabled,
+  });
+  
+  // 如果是创始Agent，注入项目维护规范
+  if (session.config.type === "founder" && session.config.projectSpace) {
+    systemPrompt += buildFounderPrompt(session.config);
+  }
+
+  // ========== 自动识别耗时任务 ==========
+  if (isLikelyLongTask(text)) {
+    console.log(`  ⏱️ 自动识别为耗时任务`);
+    const ltManager = getLongTaskManager(session.config.id);
+    const task = ltManager.submit({
+      agentId: session.config.id,
+      userId: fromUser,
+      chatId: fromUser,
+      contextToken,
+      prompt: text,
+      cwd: userWorkspace.cwd,
+      model: session.config.ai.model,
+      systemPrompt,
+      maxTurns: session.config.ai.maxTurns,
+    });
+    
+    const queueLen = ltManager.getQueueLength();
+    let autoMsg = `⏱️ 检测到耗时任务，已自动转为后台执行\n\nID: \`${task.id}\`\n状态: ${task.status === "pending" ? "排队中" : "运行中"}\n`;
+    if (task.status === "pending" && queueLen > 0) {
+      autoMsg += `排队位置: 前面还有 ${queueLen} 个任务\n`;
+    }
+    autoMsg += `\n每 30 秒会收到进度报告。\n`;
+    autoMsg += `使用 \`/longtask status ${task.id}\` 查看进度\n`;
+    autoMsg += `使用 \`/longtask cancel ${task.id}\` 取消任务`;
+    
+    await sendTextReply(session.api, fromUser, contextToken, autoMsg);
+    console.log(`  📤 已自动提交耗时任务: ${task.id}`);
+    return;
+  }
+
   // 检查是否存在有效的 session（目录下有文件才使用 --continue）
   let hasExistingSession = false;
   if (turns > 0) {
@@ -683,16 +827,6 @@ async function handleMessage(
       hasExistingSession = false;
     }
   }
-  
-  // 构建系统提示词（每轮都注入，确保记忆始终可用）
-  let systemPrompt = buildSystemPrompt(session.runtime, {
-    includeMemory: session.config.memory.enabled,
-  });
-  
-  // 如果是创始Agent，注入项目维护规范
-  if (session.config.type === "founder" && session.config.projectSpace) {
-    systemPrompt += buildFounderPrompt(session.config);
-  }
 
   const kimiOpts: KimiOptions & { systemPrompt?: string } = {
     model: session.config.ai.model,
@@ -702,6 +836,36 @@ async function handleMessage(
     systemPrompt: systemPrompt,
     continueSession: hasExistingSession,  // 只有存在有效 session 时才复用
   };
+
+  // 自动识别耗时任务
+  if (isLikelyLongTask(text)) {
+    console.log(`  ⏱️ 自动识别为耗时任务`);
+    const ltManager = getLongTaskManager(session.config.id);
+    const task = ltManager.submit({
+      agentId: session.config.id,
+      userId: fromUser,
+      chatId: fromUser,
+      contextToken,
+      prompt: text,
+      cwd: userWorkspace.cwd,
+      model: session.config.ai.model,
+      systemPrompt,
+      maxTurns: session.config.ai.maxTurns,
+    });
+    
+    const queueLen = ltManager.getQueueLength();
+    let autoMsg = `⏱️ 检测到耗时任务，已自动转为后台执行\n\nID: \`${task.id}\`\n状态: ${task.status === "pending" ? "排队中" : "运行中"}\n`;
+    if (task.status === "pending" && queueLen > 0) {
+      autoMsg += `排队位置: 前面还有 ${queueLen} 个任务\n`;
+    }
+    autoMsg += `\n每 30 秒会收到进度报告。\n`;
+    autoMsg += `使用 \`/longtask status ${task.id}\` 查看进度\n`;
+    autoMsg += `使用 \`/longtask cancel ${task.id}\` 取消任务`;
+    
+    await sendTextReply(session.api, fromUser, contextToken, autoMsg);
+    console.log(`  📤 已自动提交耗时任务: ${task.id}`);
+    return;
+  }
 
   // 显示输入中
   showTyping(session.api, fromUser, contextToken);
@@ -858,6 +1022,31 @@ async function main() {
     } catch (e) {
       console.error(`[Notification:${session.config.id}] 初始化失败:`, e);
     }
+
+    // 初始化耗时任务管理器
+    const ltManager = getLongTaskManager(session.config.id, {
+      maxConcurrency: 5,
+      reportIntervalMs: 30_000,
+      onProgress: async (task: LongTask, progress: ProgressInfo) => {
+        const msg = formatProgressMessage(task, progress);
+        await sendTextReply(api, task.chatId, task.contextToken, msg);
+        console.log(`  [LongTask:${task.id}] 进度: ${progress.percent}% - ${progress.step}`);
+      },
+      onComplete: async (task: LongTask) => {
+        const statusEmoji = task.status === "completed" ? "✅" : "❌";
+        const msg = `${statusEmoji} **耗时任务完成** \`${task.id}\`\n\n` +
+          `状态: ${task.status === "completed" ? "成功" : "失败"}\n` +
+          `耗时: ${((task.completedAt! - task.startedAt!) / 1000).toFixed(1)}s\n\n` +
+          `---\n${task.result?.slice(0, 3000) || task.error || ""}${(task.result?.length || 0) > 3000 ? "\n... (已截断)" : ""}`;
+        await sendTextReply(api, task.chatId, task.contextToken, msg);
+        console.log(`  [LongTask:${task.id}] 完成: ${task.status}`);
+      },
+      onCancel: async (task: LongTask) => {
+        const msg = `🚫 **耗时任务已取消** \`${task.id}\``;
+        await sendTextReply(api, task.chatId, task.contextToken, msg);
+        console.log(`  [LongTask:${task.id}] 已取消`);
+      },
+    });
   }
 
   if (activeAgents.size === 0) {

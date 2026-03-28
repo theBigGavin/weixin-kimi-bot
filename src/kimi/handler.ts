@@ -299,6 +299,29 @@ export async function runKimiLogin(): Promise<boolean> {
 }
 
 /**
+ * 判断一个提示词是否可能是耗时任务
+ * 基于关键词启发式判断
+ */
+export function isLikelyLongTask(prompt: string): boolean {
+  const indicators = [
+    /重构|重构代码|rewrite|refactor/i,
+    /迁移|migrate|migration/i,
+    /分析整个项目|analyze project|codebase/i,
+    /搜索所有|find all|grep all/i,
+    /批量|batch|bulk/i,
+    /生成.*所有|generate all/i,
+    /测试所有|test all/i,
+    /构建|build|compile/i,
+    /安装依赖|npm install|pip install/i,
+    /扫描|scan/i,
+    /统计|statistics|count/i,
+    /比较大量|compare.*files/i,
+    /处理.*文件|process.*files/i,
+  ];
+  return indicators.some(re => re.test(prompt));
+}
+
+/**
  * Check if running in a TTY (interactive terminal).
  */
 function isInteractive(): boolean {

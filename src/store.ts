@@ -234,6 +234,16 @@ export function scheduledTasksPath(agentId?: string): string {
   return path.join(BASE_DIR, "scheduled-tasks.json");
 }
 
+// ============ 耗时任务历史记录路径 ============
+
+export function longTaskHistoryPath(agentId?: string): string {
+  const id = agentId || getActiveAgentId();
+  if (id) {
+    return path.join(getAgentDir(id), "longtask-history.jsonl");
+  }
+  return path.join(BASE_DIR, "longtask-history.jsonl");
+}
+
 // ============ 待确认任务（内存中，不需要持久化） ============
 
 interface PendingTask {
