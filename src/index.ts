@@ -692,6 +692,19 @@ async function handleMessage(
   // 获取用户专属工作目录配置
   const userWorkspace = await getUserWorkspace(session, fromUser);
   
+  // 检查是否存在有效的 session（目录下有文件才使用 --continue）
+  let hasExistingSession = false;
+  if (turns > 0) {
+    try {
+      const { readdir } = await import("node:fs/promises");
+      const files = await readdir(userWorkspace.cwd);
+      // 排除软链接，检查是否有实际的 session 文件
+      hasExistingSession = files.filter(f => f !== "project" && f !== "workspace").length > 0;
+    } catch {
+      hasExistingSession = false;
+    }
+  }
+  
   // 构建系统提示词（每轮都注入，确保记忆始终可用）
   let systemPrompt = buildSystemPrompt(session.runtime, {
     includeMemory: session.config.memory.enabled,
@@ -708,7 +721,7 @@ async function handleMessage(
     maxTurns: session.config.ai.maxTurns,
     planMode: false,
     systemPrompt: systemPrompt,
-    continueSession: turns > 0,  // 非第一轮时复用 session
+    continueSession: hasExistingSession,  // 只有存在有效 session 时才复用
   };
 
   // 显示输入中
