@@ -9,8 +9,8 @@
 
 export const VERSION = {
   major: 0,
-  minor: 3,
-  patch: 18,
+  minor: 4,
+  patch: 0,
   
   /** 完整版本号 */
   get full(): string {
@@ -21,7 +21,7 @@ export const VERSION = {
   date: "2026-03-28",
   
   /** 版本说明 */
-  description: "PM2 配置使用编译后的 dist/index.js 而非 tsx",
+  description: "实现 /longtask 耗时任务系统，支持进度报告、自动识别、并发控制和历史记录",
 };
 
 /** 提交哈希（由构建时注入） */
