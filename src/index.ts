@@ -33,8 +33,12 @@ import {
 import { getScheduler, formatCronDescription, parseNaturalLanguageToCron, type ParsedTaskInfo } from "./scheduler.js";
 import { getNotificationManager } from "./notifications/index.js";
 import { getVersionInfo, VERSION } from "./version.js";
-import { getLongTaskManager, formatProgressMessage } from "./longtask/manager.js";
-import type { LongTask, ProgressInfo } from "./longtask/types.js";
+import { getLongTaskManager, formatProgressMessage as formatLongTaskProgress } from "./longtask/manager.js";
+import type { LongTask, ProgressInfo as LongTaskProgressInfo } from "./longtask/types.js";
+
+// FlowTask 导入
+import { getFlowTaskManager, formatProgressMessage as formatFlowTaskProgress, formatPlanForUserConfirmation } from "./flowtask/manager.js";
+import type { FlowTask, ProgressInfo as FlowTaskProgressInfo, HumanApprovalRequest } from "./flowtask/types.js";
 
 // Agent 相关导入
 import { agentManager } from "./agent/manager.js";
@@ -85,6 +89,7 @@ const COMMANDS = {
   ver: { desc: "查看 Bot 版本信息" },
   task: { desc: "定时任务管理 (list/create/delete/toggle)" },
   longtask: { desc: "耗时任务管理 (submit/status/list/cancel)" },
+  flowtask: { desc: "可靠任务流 - 结构化计划执行 (run/status/list/cancel/approve)" },
 };
 
 function parseCommand(text: string): { command: string; args: string } | null {
@@ -420,7 +425,7 @@ async function handleAgentCommand(
           return `❌ 任务不存在: ${taskId}`;
         }
         const progress = task.progressLogs[task.progressLogs.length - 1];
-        return formatProgressMessage(task, progress);
+        return formatLongTaskProgress(task, progress);
       }
       
       // 取消任务
@@ -1027,8 +1032,8 @@ async function main() {
     const ltManager = getLongTaskManager(session.config.id, {
       maxConcurrency: 5,
       reportIntervalMs: 30_000,
-      onProgress: async (task: LongTask, progress: ProgressInfo) => {
-        const msg = formatProgressMessage(task, progress);
+      onProgress: async (task: LongTask, progress: LongTaskProgressInfo) => {
+        const msg = formatLongTaskProgress(task, progress);
         await sendTextReply(api, task.chatId, task.contextToken, msg);
         console.log(`  [LongTask:${task.id}] 进度: ${progress.percent}% - ${progress.step}`);
       },
@@ -1045,6 +1050,50 @@ async function main() {
         const msg = `🚫 **耗时任务已取消** \`${task.id}\``;
         await sendTextReply(api, task.chatId, task.contextToken, msg);
         console.log(`  [LongTask:${task.id}] 已取消`);
+      },
+    });
+
+    // 初始化 FlowTask 管理器（可靠自我迭代架构）
+    const ftManager = getFlowTaskManager(session.config.id, {
+      maxConcurrency: 4,
+      reportIntervalMs: 30_000,
+      autoApproveLowRisk: false,
+      requireApprovalFor: ["write", "shell", "human"],
+      onProgress: async (task: FlowTask, progress: FlowTaskProgressInfo) => {
+        const msg = formatFlowTaskProgress(task, progress);
+        await sendTextReply(api, task.chatId, task.contextToken, msg);
+        console.log(`  [FlowTask:${task.id}] 进度: ${progress.percent}% - ${progress.step}`);
+      },
+      onComplete: async (task: FlowTask) => {
+        const statusEmoji = task.status === "completed" ? "✅" : task.status === "cancelled" ? "🚫" : "❌";
+        const audit = task.execution?.audit;
+        const humanCount = audit?.filter(a => a.event === "human_approval_requested").length || 0;
+        const msg = `${statusEmoji} **FlowTask 完成** \`${task.id}\`\n\n` +
+          `状态: ${task.status === "completed" ? "成功" : task.status === "cancelled" ? "已取消" : "失败"}\n` +
+          `步骤: ${task.plan?.steps.length || 0} | 人工介入: ${humanCount}次\n` +
+          `风险等级: ${task.plan?.validation.riskLevel === "high" ? "🔴 高" : task.plan?.validation.riskLevel === "medium" ? "🟡 中" : "🟢 低"}\n` +
+          `耗时: ${task.startedAt && task.completedAt ? ((task.completedAt - task.startedAt) / 1000).toFixed(1) : 0}s\n\n` +
+          `---\n${task.result?.slice(0, 3000) || task.error || ""}${(task.result?.length || 0) > 3000 ? "\n... (已截断)" : ""}`;
+        await sendTextReply(api, task.chatId, task.contextToken, msg);
+        console.log(`  [FlowTask:${task.id}] 完成: ${task.status}`);
+      },
+      onCancel: async (task: FlowTask) => {
+        const msg = `🚫 **FlowTask 已取消** \`${task.id}\``;
+        await sendTextReply(api, task.chatId, task.contextToken, msg);
+        console.log(`  [FlowTask:${task.id}] 已取消`);
+      },
+      onApprovalRequest: async (task: FlowTask, request: HumanApprovalRequest) => {
+        let msg = `⏸️ **FlowTask 等待确认** \`${task.id}\`\n\n`;
+        msg += `步骤 ${request.stepNumber}: ${request.description}\n`;
+        msg += `风险等级: ${request.riskLevel === "high" ? "🔴 高" : request.riskLevel === "medium" ? "🟡 中" : "🟢 低"}\n\n`;
+        if (request.preview) {
+          msg += `*预览*:\n\`\`\`\n${request.preview.content.slice(0, 500)}${request.preview.content.length > 500 ? "\n..." : ""}\n\`\`\`\n\n`;
+        }
+        msg += `请在5分钟内回复:\n`;
+        msg += `- \`/flowtask approve ${task.id}\` 确认继续\n`;
+        msg += `- \`/flowtask reject ${task.id} [原因]\` 拒绝执行`;
+        await sendTextReply(api, task.chatId, task.contextToken, msg);
+        console.log(`  [FlowTask:${task.id}] 等待用户确认: ${request.description}`);
       },
     });
   }
@@ -1166,6 +1215,25 @@ function startDynamicAgentLoader(): void {
         } catch (e) {
           console.error(`[Notification:${session.config.id}] 初始化失败:`, e);
         }
+
+        // 初始化 FlowTask 管理器
+        getFlowTaskManager(session.config.id, {
+          maxConcurrency: 4,
+          reportIntervalMs: 30_000,
+          onProgress: async (task: FlowTask, progress: FlowTaskProgressInfo) => {
+            // 动态加载的Agent可能还没有完整的回复函数，先简单记录
+            console.log(`  [FlowTask:${task.id}] 进度: ${progress.percent}% - ${progress.step}`);
+          },
+          onComplete: async (task: FlowTask) => {
+            console.log(`  [FlowTask:${task.id}] 完成: ${task.status}`);
+          },
+          onCancel: async (task: FlowTask) => {
+            console.log(`  [FlowTask:${task.id}] 已取消`);
+          },
+          onApprovalRequest: async (task: FlowTask, request: HumanApprovalRequest) => {
+            console.log(`  [FlowTask:${task.id}] 等待确认: ${request.description}`);
+          },
+        });
 
         // 启动消息轮询
         pollMessages(session);
