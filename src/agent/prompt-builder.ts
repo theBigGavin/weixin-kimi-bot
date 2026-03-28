@@ -202,14 +202,25 @@ export function buildHelpPrompt(runtime: AgentRuntime): string {
 /template - 查看/切换能力模板
 /memory - 管理长期记忆
 /task - 定时任务管理
+/longtask - 耗时任务管理(支持进度报告、后台执行)
 /ver - 查看Bot版本信息
 
-**当前角色：** ${template.name} ${template.icon}
+**/longtask 详细说明：**
+- /longtask <描述> - 提交耗时任务(如重构、批量处理)
+- /longtask list - 查看所有任务及状态
+- /longtask status <id> - 查看指定任务进度
+- /longtask cancel <id> - 取消运行中的任务
+- 自动识别: 包含"重构/迁移/批量/构建"等关键词自动转为后台任务
+- 进度报告: 每30秒自动推送进度(步骤+文件+百分比)
+- 并发控制: 最多5个任务并行，超出自动排队
+- 历史记录: 任务完成后长期保存，可随时查看
+
+**当前角色:** ${template.name} ${template.icon}
 ${template.description}
 
-**工作目录：** \`${runtime.config.workspace.path}\`
+**工作目录:** \`${runtime.config.workspace.path}\`
 
-**功能开关：**
+**功能开关:**
 ${runtime.config.features.fileAccess ? "✅" : "❌"} 文件操作
 ${runtime.config.features.webSearch ? "✅" : "❌"} 网络搜索
 ${runtime.config.features.scheduledTasks ? "✅" : "❌"} 定时任务
