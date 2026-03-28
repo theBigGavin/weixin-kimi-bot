@@ -108,15 +108,29 @@ echo "  npm run service:status   - 查看状态"
 echo "  npm run service:logs     - 查看日志"
 echo ""
 
-# 询问是否启动服务
-read -p "是否现在启动后台服务? (y/n) " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    npm run service:start
-    echo ""
-    echo "服务已启动！使用以下命令管理:"
-    echo "  npm run service:status   - 查看状态"
-    echo "  npm run service:logs     - 查看日志"
-    echo "  npm run service:restart  - 重启服务"
-    echo "  npm run service:stop     - 停止服务"
+# 检查是否为非交互式环境
+if [ -t 0 ]; then
+  # 交互式环境：询问用户
+  read -p "是否现在启动后台服务? (y/n) " -n 1 -r
+  echo
+  if [[ $REPLY =~ ^[Yy]$ ]]; then
+      npm run service:start
+      echo ""
+      echo "服务已启动！使用以下命令管理:"
+      echo "  npm run service:status   - 查看状态"
+      echo "  npm run service:logs     - 查看日志"
+      echo "  npm run service:restart  - 重启服务"
+      echo "  npm run service:stop     - 停止服务"
+  fi
+else
+  # 非交互式环境：直接启动
+  echo ""
+  echo "非交互式环境，自动启动后台服务..."
+  npm run service:start
+  echo ""
+  echo "服务已启动！使用以下命令管理:"
+  echo "  npm run service:status   - 查看状态"
+  echo "  npm run service:logs     - 查看日志"
+  echo "  npm run service:restart  - 重启服务"
+  echo "  npm run service:stop     - 停止服务"
 fi
