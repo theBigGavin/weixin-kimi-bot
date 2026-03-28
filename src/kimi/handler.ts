@@ -17,6 +17,7 @@ export type KimiOptions = {
   maxTurns: number;
   planMode: boolean;
   yolo?: boolean;  // Auto-approve all actions
+  continueSession?: boolean;  // 使用 --continue 复用 session
 };
 
 /**
@@ -68,6 +69,11 @@ export async function askKimi(prompt: string, opts: KimiOptions): Promise<KimiRe
   // Add yolo mode if enabled (auto-approve all actions)
   if (opts.yolo) {
     args.push("--yolo");
+  }
+  
+  // Add continue mode to reuse previous session
+  if (opts.continueSession) {
+    args.push("--continue");
   }
   
   // Build the final prompt (prepend system prompt if provided)

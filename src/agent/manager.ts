@@ -464,6 +464,19 @@ export class AgentManager {
   getAgentPath(agentId: string): string {
     return join(BASE_DIR, agentId);
   }
+
+  /**
+   * 重新加载单个Agent的配置
+   * 用于 /reset 命令后刷新配置
+   */
+  async reloadAgentConfig(agentId: string): Promise<AgentConfig | null> {
+    const config = await this.loadAgentConfig(agentId);
+    if (config) {
+      this.agents.set(agentId, config);
+      return config;
+    }
+    return null;
+  }
 }
 
 // 导出单例

@@ -5,6 +5,8 @@
  */
 import crypto from "node:crypto";
 import { readFileSync } from "node:fs";
+import { mkdir, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import {
   getUpdates,
@@ -54,6 +56,7 @@ interface AgentSession {
   };
   conversationTurns: Map<string, number>; // userId -> turns
   lastMemoryExtract: Map<string, number>; // userId -> timestamp
+  userWorkspaces: Map<string, string>; // userId -> 用户专属工作目录
 }
 
 const activeAgents: Map<string, AgentSession> = new Map();
@@ -101,11 +104,34 @@ async function handleAgentCommand(
     case "status":
       return buildStatusPrompt(runtime);
 
-    case "reset":
+    case "reset": {
+      // 重新加载配置，确保 config.json 的修改生效
+      const reloadedConfig = await agentManager.reloadAgentConfig(session.config.id);
+      if (reloadedConfig) {
+        session.config = reloadedConfig;
+        const newRuntime = await agentManager.buildRuntime(session.config.id);
+        if (newRuntime) {
+          session.runtime = newRuntime;
+        }
+      }
+      
+      // 清除用户 Kimi session 目录（下次会新建 session）
+      const userDir = session.userWorkspaces.get(fromUser);
+      if (userDir && existsSync(userDir)) {
+        try {
+          await rm(userDir, { recursive: true, force: true });
+          session.userWorkspaces.delete(fromUser);
+          console.log(`  🗑️ 已清除用户 session 目录: ${userDir}`);
+        } catch (e) {
+          console.error(`  ⚠️ 清除用户目录失败: ${e}`);
+        }
+      }
+      
       // 重置对话轮次
       session.conversationTurns.delete(fromUser);
       session.lastMemoryExtract.delete(fromUser);
-      return "🔄 对话上下文已重置。系统提示词将在下一条消息重新注入。";
+      return "🔄 对话上下文已重置，配置已重新加载。系统提示词将在下一条消息重新注入。";
+    }
 
     case "template": {
       const { getTemplates } = await import("./templates/definitions.js");
@@ -320,6 +346,33 @@ async function showTyping(api: ApiOptions, userId: string, contextToken?: string
   }
 }
 
+// ============ 用户工作目录管理 ============
+
+/**
+ * 获取/创建用户专属工作目录
+ * 每个微信用户有独立的子目录，用于隔离 Kimi session
+ */
+async function getUserWorkspace(
+  session: AgentSession,
+  userId: string
+): Promise<string> {
+  // 检查缓存
+  let userDir = session.userWorkspaces.get(userId);
+  if (userDir) {
+    return userDir;
+  }
+
+  // 创建用户专属目录
+  userDir = join(session.config.workspace.path, "users", userId);
+  if (!existsSync(userDir)) {
+    await mkdir(userDir, { recursive: true });
+    console.log(`  📁 创建用户工作目录: ${userDir}`);
+  }
+
+  session.userWorkspaces.set(userId, userDir);
+  return userDir;
+}
+
 // ============ 核心消息处理 ============
 
 async function handleMessage(
@@ -368,23 +421,23 @@ async function handleMessage(
 
   // 构建 Kimi 选项
   const turns = session.conversationTurns.get(fromUser) || 0;
-  const shouldReinject = turns === 0 || turns >= session.config.ai.maxTurns * 0.8;
-
-  // 构建系统提示词
+  
+  // 获取用户专属工作目录（用于隔离 Kimi session）
+  const userCwd = await getUserWorkspace(session, fromUser);
+  
+  // 构建系统提示词（每轮都注入，确保记忆始终可用）
   const systemPrompt = buildSystemPrompt(session.runtime, {
     includeMemory: session.config.memory.enabled,
   });
 
   const kimiOpts: KimiOptions & { systemPrompt?: string } = {
     model: session.config.ai.model,
-    cwd: session.config.workspace.path,
+    cwd: userCwd,  // 使用用户专属目录
     maxTurns: session.config.ai.maxTurns,
     planMode: false,
+    systemPrompt: systemPrompt,  // 始终注入系统提示词
+    continueSession: turns > 0,  // 非第一轮时复用 session
   };
-  
-  if (shouldReinject) {
-    kimiOpts.systemPrompt = systemPrompt;
-  }
 
   // 显示输入中
   showTyping(session.api, fromUser, contextToken);
@@ -404,19 +457,21 @@ async function handleMessage(
     // 提取记忆（如果启用）
     if (session.config.memory.enabled && session.config.memory.autoExtract) {
       const lastExtract = session.lastMemoryExtract.get(fromUser) || 0;
-      const shouldExtract = turns > 0 && turns % 5 === 0 && Date.now() - lastExtract > 60000;
+      // 放宽提取条件：每3轮或超过5分钟提取一次
+      const shouldExtract = (turns > 0 && turns % 3 === 0) || Date.now() - lastExtract > 5 * 60 * 1000;
       
       if (shouldExtract) {
         console.log(`  🧠 提取记忆...`);
+        // 使用更完整的对话上下文
         const conversation = `用户: ${text}\nAI: ${response.text}`;
         const extraction = await extractMemoryFromConversation(conversation, session.config.id);
         
-        if (extraction && (extraction.facts?.length || extraction.projects?.length)) {
+        if (extraction && (extraction.facts?.length || extraction.projects?.length || extraction.userProfile)) {
           const updatedMemory = mergeMemory(session.runtime.memory, extraction, `conv_${Date.now()}`);
           await saveMemory(session.config.id, updatedMemory);
           session.runtime.memory = updatedMemory;
           session.lastMemoryExtract.set(fromUser, Date.now());
-          console.log(`  ✅ 已提取 ${extraction.facts?.length || 0} 条事实`);
+          console.log(`  ✅ 已提取 ${extraction.facts?.length || 0} 条事实, ${extraction.projects?.length || 0} 个项目`);
         }
       }
     }
@@ -515,6 +570,7 @@ async function main() {
       },
       conversationTurns: new Map(),
       lastMemoryExtract: new Map(),
+      userWorkspaces: new Map(),
     };
 
     activeAgents.set(agentConfig.id, session);
@@ -634,6 +690,7 @@ function startDynamicAgentLoader(): void {
           },
           conversationTurns: new Map(),
           lastMemoryExtract: new Map(),
+          userWorkspaces: new Map(),
         };
 
         activeAgents.set(agentConfig.id, session);

@@ -10,7 +10,7 @@
 export const VERSION = {
   major: 0,
   minor: 3,
-  patch: 5,
+  patch: 6,
   
   /** 完整版本号 */
   get full(): string {
@@ -18,10 +18,10 @@ export const VERSION = {
   },
   
   /** 版本日期（最后一次更新日期） */
-  date: "2026-03-27",
+  date: "2026-03-28",
   
   /** 版本说明 */
-  description: "release: v0.3.4 - 优化版本脚本，支持自动提取功能描述",
+  description: "release: v0.3.5 - release: v0.3.4 - 优化版本脚本，支持自动提取功能描述",
 };
 
 /** 提交哈希（由构建时注入） */
