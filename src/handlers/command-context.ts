@@ -153,6 +153,19 @@ ${kimiSession.exists ? `- ID: \`${kimiSession.sessionId?.slice(0, 16)}...\`
       return `用法:\n/context status - 查看状态\n/context options - 查看活跃选项\n/context history - 查看消息历史`;
     }
 
+    case "searxng": {
+      const { checkSearxngHealth, getSearxngConfig } = await import("../services/searxng.js");
+      const subCmd = args.trim();
+      
+      if (subCmd === "status" || subCmd === "") {
+        const health = await checkSearxngHealth();
+        const config = getSearxngConfig();
+        return `**SearXNG 搜索服务状态**\n\n状态: ${health.available ? "✅ 可用" : "❌ 不可用"}\n地址: \`${config.baseUrl}\n\n${health.available ? "" : `错误: ${health.message}`}`;
+      }
+      
+      return `用法:\n/searxng status - 检查搜索服务状态`;
+    }
+
     default:
       // 其他命令使用原有逻辑
       return handleCommand(command, args, {

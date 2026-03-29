@@ -57,6 +57,7 @@ import { extractText, parseCommand } from "../utils/index.js";
 import { sendTextReply, getUserWorkspace, showTyping } from "./message-utils.js";
 import { handleAgentCommandWithContext } from "./command-context.js";
 import type { AgentSession, PendingTask } from "./types.js";
+import { performSmartSearch, checkSearxngHealth } from "../services/searxng.js";
 
 // 外部传入的 contextSystem
 interface ContextSystem {
@@ -165,14 +166,31 @@ export async function handleMessageWithContext(
   // 获取工作目录
   const userWorkspace = await getUserWorkspace(session, fromUser);
 
+  // ============ 智能搜索（如果需要）============
+  let searchResults: string | undefined;
+  try {
+    const searchCheck = await performSmartSearch(intent.resolvedText || text);
+    if (searchCheck.needed && searchCheck.results) {
+      console.log(`  🔍 搜索查询: "${searchCheck.query}"`);
+      searchResults = searchCheck.results;
+    }
+  } catch (error) {
+    console.warn(`  ⚠️ 搜索失败: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
   // ============ 构建上下文感知的Prompt ============
   const { createPromptBuilder } = await import("../prompt/index.js");
   const promptBuilder = createPromptBuilder();
-  const systemPrompt = promptBuilder.build(session.runtime, sessionContext, intent.resolvedText || text, {
+  let systemPrompt = promptBuilder.build(session.runtime, sessionContext, intent.resolvedText || text, {
     includeRecentMessages: 5,
     includeActiveOptions: true,
     includeState: true,
   });
+
+  // 将搜索结果注入到 systemPrompt 中
+  if (searchResults) {
+    systemPrompt = `${systemPrompt}\n\n## 网络搜索结果\n\n${searchResults}\n\n请基于以上搜索结果回答用户问题。`;
+  }
 
   // 检测Kimi session
   const sessionMeta = loadUserSessionMeta(session.config.id, fromUser);
