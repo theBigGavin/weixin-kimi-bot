@@ -115,17 +115,18 @@ export class OutputParser {
     const options: Option[] = [];
     const lines = content.split('\n');
 
-    // 模式1: [id] 标签: 描述
-    const bracketPattern = /\[([\w_]+)\]\s*(?:方案|选项)?\s*[：:]?\s*(.+)/;
+    // 模式1: [id] 方案1：标题
+    // 匹配 [opt_1] 后面的完整标签，包括"方案1："前缀
+    const bracketPattern = /\[([\w_]+)\]\s*(.+)/;
 
     // 模式2: **方案1**：标题
-    const boldPattern = /\*\*\s*(?:方案|选项)?\s*[：:]?\s*(.+?)\*\*/;
+    const boldPattern = /\*\*\s*(.+?)\*\*/;
 
-    // 模式3: 1. 标题 或 方案1：标题
-    const numberPattern = /^(?:方案|选项)?\s*[：:]?\s*(\d+)[.、)\s]+(.+)/;
+    // 模式3: 1. 方案1：标题 或 方案1：标题
+    const numberPattern = /^(\d+)[.、)\s]+(?:方案|选项)?\s*[：:]?\s*(.+)/;
 
     // 模式4: - 方案1：标题
-    const bulletPattern = /^[-*]\s*(?:方案|选项)?\s*[：:]?\s*(.+)/;
+    const bulletPattern = /^[-*]\s*(.+)/;
 
     let currentOption: Partial<Option> | null = null;
     let descriptionLines: string[] = [];

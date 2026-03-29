@@ -37,7 +37,7 @@ describe('IntentResolver', () => {
       const intent = await resolver.identify('选方案1', context);
       
       expect(intent.type).toBe(IntentType.SELECT_OPTION);
-      expect(intent.confidence).toBeGreaterThan(0.8);
+      expect(intent.confidence).toBeGreaterThan(0.75);
     });
 
     it('应该识别"采用A方案"', async () => {

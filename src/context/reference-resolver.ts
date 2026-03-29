@@ -21,14 +21,14 @@ const REFERENCE_PATTERNS: ReferencePattern[] = [
   // 方案1、选项2、第3个、第一个
   {
     name: 'option_number_cn',
-    pattern: /^(方案|选项|第)?\s*([123一二三])\s*[个方案选项]?/i,
+    pattern: /(方案|选项|第)?\s*([123一二三])\s*[个方案选项]?/i,
     type: 'option_index',
     priority: 100,
   },
   // 第1个、第2个（阿拉伯数字）
   {
     name: 'option_number_arabic',
-    pattern: /^(第)?\s*([123])\s*[个方案选项]?/i,
+    pattern: /(第)?\s*([123])\s*[个方案选项]?/i,
     type: 'option_index',
     priority: 95,
   },
@@ -37,7 +37,7 @@ const REFERENCE_PATTERNS: ReferencePattern[] = [
   // 方案A、选项B、选C
   {
     name: 'option_letter',
-    pattern: /^(方案|选项)?\s*([ABCabc])\s*$/i,
+    pattern: /(方案|选项)?\s*([ABCabc])\b/i,
     type: 'option_label',
     priority: 90,
   },
