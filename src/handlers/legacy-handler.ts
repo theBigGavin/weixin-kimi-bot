@@ -150,9 +150,11 @@ export async function handleMessageLegacy(
   }
 
   // ========== 智能任务路由 ==========
-  const autoRouteEnabled = userAutoRoute.get(fromUser) ?? false;
+  // 默认开启自动路由，除非用户明确关闭 (/auto off)
+  const autoRouteEnabled = userAutoRoute.get(fromUser);
+  const shouldAutoRoute = autoRouteEnabled !== false;
 
-  if (autoRouteEnabled) {
+  if (shouldAutoRoute) {
     console.log(`  🧭 自动路由已开启，分析任务...`);
 
     const submission: TaskSubmission = {

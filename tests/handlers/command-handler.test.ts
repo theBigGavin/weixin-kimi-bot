@@ -115,7 +115,8 @@ describe('handleCommand', () => {
       const context = createMockContext({ fromUser: 'user1' });
       const result = await handleCommand('auto', 'on', context);
       
-      expect(result).toContain('自动路由已开启');
+      expect(result).toContain('自动路由');
+      expect(result).toContain('开启');
       expect(userAutoRoute.get('user1')).toBe(true);
     });
 
@@ -123,7 +124,8 @@ describe('handleCommand', () => {
       const context = createMockContext({ fromUser: 'user1' });
       const result = await handleCommand('auto', 'true', context);
       
-      expect(result).toContain('自动路由已开启');
+      expect(result).toContain('自动路由');
+      expect(result).toContain('开启');
       expect(userAutoRoute.get('user1')).toBe(true);
     });
 
@@ -131,7 +133,8 @@ describe('handleCommand', () => {
       const context = createMockContext({ fromUser: 'user1' });
       const result = await handleCommand('auto', '1', context);
       
-      expect(result).toContain('自动路由已开启');
+      expect(result).toContain('自动路由');
+      expect(result).toContain('开启');
       expect(userAutoRoute.get('user1')).toBe(true);
     });
 
@@ -139,7 +142,8 @@ describe('handleCommand', () => {
       const context = createMockContext({ fromUser: 'user1' });
       const result = await handleCommand('auto', 'off', context);
       
-      expect(result).toContain('自动路由已关闭');
+      expect(result).toContain('自动路由');
+      expect(result).toContain('关闭');
       expect(userAutoRoute.get('user1')).toBe(false);
     });
 
@@ -147,7 +151,8 @@ describe('handleCommand', () => {
       const context = createMockContext({ fromUser: 'user1' });
       const result = await handleCommand('auto', 'false', context);
       
-      expect(result).toContain('自动路由已关闭');
+      expect(result).toContain('自动路由');
+      expect(result).toContain('关闭');
       expect(userAutoRoute.get('user1')).toBe(false);
     });
 
@@ -155,7 +160,8 @@ describe('handleCommand', () => {
       const context = createMockContext({ fromUser: 'user1' });
       const result = await handleCommand('auto', '0', context);
       
-      expect(result).toContain('自动路由已关闭');
+      expect(result).toContain('自动路由');
+      expect(result).toContain('关闭');
       expect(userAutoRoute.get('user1')).toBe(false);
     });
 
@@ -164,7 +170,7 @@ describe('handleCommand', () => {
       const result = await handleCommand('auto', '', context);
       
       expect(result).toContain('自动路由状态');
-      expect(result).toContain('❌ 关闭');
+      expect(result).toContain('🔄 自动模式');
     });
 
     it('should show status with "status" argument', async () => {
@@ -173,7 +179,7 @@ describe('handleCommand', () => {
       const result = await handleCommand('auto', 'status', context);
       
       expect(result).toContain('自动路由状态');
-      expect(result).toContain('✅ 开启');
+      expect(result).toContain('✅ 强制开启');
     });
 
     it('should show usage for invalid arguments', async () => {

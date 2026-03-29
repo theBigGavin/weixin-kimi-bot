@@ -48,7 +48,7 @@ export function getCommandList(): Record<string, string> {
     flowtask: "可靠任务流 - 结构化计划执行",
     deploy: "部署 Bot (patch/minor/major)",
     route: "智能任务路由 (analyze/stats/auto)",
-    auto: "开关自动路由 (on/off/status)",
+    auto: "智能任务路由开关 (on/off/status)",
     session: "查看 Session 状态",
     context: "查看上下文详情",
   };
@@ -316,13 +316,19 @@ function handleAuto(args: string, context: CommandContext): string {
   
   if (value === "on" || value === "true" || value === "1") {
     userAutoRoute.set(fromUser, true);
-    return `✅ 自动路由已开启\n\n系统将根据任务复杂度自动选择执行模式。`;
+    return `✅ 自动路由已强制开启\n\n系统将始终根据任务复杂度自动选择执行模式。`;
   } else if (value === "off" || value === "false" || value === "0") {
     userAutoRoute.set(fromUser, false);
-    return `✅ 自动路由已关闭\n\n所有任务将直接执行。`;
+    return `✅ 自动路由已强制关闭\n\n所有任务将直接执行，不再自动路由到 LongTask 或 FlowTask。`;
   } else if (value === "status" || value === "") {
-    const current = userAutoRoute.get(fromUser) ?? false;
-    return `**自动路由状态**: ${current ? "✅ 开启" : "❌ 关闭"}`;
+    const current = userAutoRoute.get(fromUser);
+    if (current === true) {
+      return `**自动路由状态**: ✅ 强制开启\n\n系统将根据任务复杂度自动选择执行模式。`;
+    } else if (current === false) {
+      return `**自动路由状态**: ❌ 强制关闭\n\n所有任务将直接执行。`;
+    } else {
+      return `**自动路由状态**: 🔄 自动模式（默认开启）\n\n系统将根据意图和任务复杂度自动选择执行模式。\n\n💡 提示：\n- 执行类任务（如"帮我修改代码"）会自动分析并路由\n- 简单问答会直接执行\n- 使用 \`/auto on\` 强制开启，\`/auto off\` 强制关闭`;
+    }
   }
   return `❓ 用法: \`/auto on/off/status\``;
 }
