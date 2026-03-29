@@ -9,8 +9,8 @@
 
 export const VERSION = {
   major: 0,
-  minor: 6,
-  patch: 20,
+  minor: 7,
+  patch: 0,
   
   /** 完整版本号 */
   get full(): string {
@@ -21,7 +21,7 @@ export const VERSION = {
   date: "2026-03-29",
   
   /** 版本说明 */
-  description: "wip: integrate Task Router into main message flow",
+  description: "实现可插拔工作流引擎，支持复杂定时任务自动化",
 };
 
 /** 提交哈希（由构建时注入） */
