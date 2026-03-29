@@ -145,6 +145,12 @@ export class ConversationStateMachine {
         intent: IntentType.EXECUTE,
         to: ConversationState.PLANNING,
       },
+      // 未知意图也接受，进入探索状态
+      {
+        from: ConversationState.IDLE,
+        intent: IntentType.UNKNOWN,
+        to: ConversationState.EXPLORING,
+      },
 
       // ========== 从EXPLORING状态 ==========
       {
@@ -421,6 +427,10 @@ export class ConversationStateMachine {
     const state = context.current;
 
     switch (state) {
+      case ConversationState.IDLE:
+        return '你好！我是您的 AI 助手。请告诉我您需要什么帮助，比如：\n• "帮我分析一下数据"\n• "写一个简单的网页"\n• "解释一下这个概念"';
+      case ConversationState.EXPLORING:
+        return '我正在了解您的需求，请提供更多细节，或告诉我您的具体目标。';
       case ConversationState.PROPOSING:
         return '当前正在提供方案，请选择其中一个方案（如"方案1"），或询问更多信息。';
       case ConversationState.CONFIRMING:
