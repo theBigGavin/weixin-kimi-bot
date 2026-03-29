@@ -17,6 +17,8 @@ import { getScheduler, formatCronDescription } from "../scheduler.js";
 import { getLongTaskManager, formatProgressMessage as formatLongTaskProgress } from "../longtask/manager.js";
 import { getFlowTaskManager, formatProgressMessage as formatFlowTaskProgress, formatPlanForUserConfirmation } from "../flowtask/manager.js";
 import { getTaskRouter } from "../task-router/index.js";
+import { getWorkflowManager } from "../workflow/manager.js";
+import { getWorkflowScheduler } from "../workflow/scheduler-integration.js";
 import { checkKimiSession, clearKimiSessions } from "../kimi/session.js";
 import { loadUserSessionMeta, resetUserSessionMeta } from "../store.js";
 import { getNotificationManager } from "../notifications/index.js";
@@ -24,9 +26,13 @@ import { saveRestartInfo } from "../services/restart-notify.js";
 import { translateState, type SessionContext } from "../context/types.js";
 import { getContextManager } from "../context/index.js";
 import { sendTextReply, getUserWorkspace as getWorkspace } from "./message-utils.js";
+import type { PendingWorkflowInfo } from "./commands/workflow.js";
 
 // 待确认的定时任务
 const pendingTasks = new Map<string, PendingTaskInfo>();
+
+// 待确认的工作流
+const pendingWorkflows = new Map<string, PendingWorkflowInfo>();
 
 // 用户自动路由偏好
 const userAutoRoute = new Map<string, boolean>();
@@ -51,6 +57,7 @@ export function getCommandList(): Record<string, string> {
     auto: "智能任务路由开关 (on/off/status)",
     session: "查看 Session 状态",
     context: "查看上下文详情",
+    workflow: "工作流管理 - 复杂自动化任务编排",
   };
 }
 
@@ -102,6 +109,7 @@ const commandHandlers: Record<string, CommandHandler> = {
   route: handleRoute,
   auto: handleAuto,
   context: handleContext,
+  workflow: handleWorkflow,
 };
 
 // ============ 具体命令处理器 ============
@@ -330,7 +338,7 @@ function handlePrompt(_args: string, { session }: CommandContext): string {
 // 其他命令处理器在单独文件中实现
 async function handleTask(args: string, context: CommandContext): Promise<string> {
   const { taskHandler } = await import("./commands/task.js");
-  return taskHandler(args, context, pendingTasks);
+  return taskHandler(args, context, pendingTasks, pendingWorkflows);
 }
 
 async function handleLongTask(args: string, context: CommandContext): Promise<string> {
@@ -428,5 +436,10 @@ function handleContext(args: string, context: CommandContext): string {
   return `用法:\n/context status - 查看状态\n/context options - 查看活跃选项\n/context history - 查看消息历史`;
 }
 
+async function handleWorkflow(args: string, context: CommandContext): Promise<string> {
+  const { workflowHandler } = await import("./commands/workflow.js");
+  return workflowHandler(args, context, pendingWorkflows);
+}
+
 // 导出给外部使用
-export { pendingTasks, userAutoRoute };
+export { pendingTasks, pendingWorkflows, userAutoRoute };

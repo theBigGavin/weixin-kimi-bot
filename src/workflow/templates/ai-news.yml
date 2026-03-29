@@ -1,0 +1,74 @@
+# AI 新闻每日晨报工作流模板
+# 
+# 用法: 每天早上8点自动搜索AI新闻并生成晨报发送给用户
+
+id: ai-news-daily
+name: AI每日晨报
+description: 每天早上搜索AI新闻并生成晨报
+category: news
+version: "1.0"
+
+tags:
+  - news
+  - ai
+  - daily
+
+variables:
+  - name: topic
+    type: string
+    description: 新闻主题
+    defaultValue: "AI人工智能"
+    required: false
+  
+  - name: searchLimit
+    type: number
+    description: 搜索结果数量
+    defaultValue: 10
+    required: false
+
+nodes:
+  - id: search
+    type: search
+    name: 搜索AI新闻
+    config:
+      limit: "${variables.searchLimit}"
+      category: news
+      language: zh
+    inputs:
+      query: "${variables.topic} \\\${date:yesterday}"
+
+  - id: generate
+    type: llm
+    name: 生成晨报
+    config:
+      model: kimi
+      temperature: 0.7
+    inputs:
+      prompt: |
+        请根据以下搜索结果，生成一份简洁的AI每日晨报。
+        
+        要求：
+        1. 标题为"📰 AI每日晨报（日期）"
+        2. 列出3-5条最重要的新闻
+        3. 每条新闻包括：标题、一句话摘要、来源
+        4. 使用中文
+        5. 格式清晰易读
+        
+        搜索结果：
+      context: "\\${search.formatted}"
+      format: markdown
+
+  - id: send
+    type: send
+    name: 发送晨报
+    config:
+      prependTitle: true
+      title: "📰 AI每日晨报"
+    inputs:
+      message: "\\${generate.content}"
+
+connections:
+  - from: search
+    to: generate
+  - from: generate
+    to: send

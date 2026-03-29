@@ -7,6 +7,8 @@ import { checkKimiInstalled, ensureKimiAuthenticated } from "./kimi/handler.js";
 import { agentManager } from "./agent/manager.js";
 import { initializeContextSystem, type SessionContext } from "./context/index.js";
 import { getScheduler } from "./scheduler.js";
+import { getWorkflowManager, setWorkflowSendMessageFn } from "./workflow/manager.js";
+import { getWorkflowScheduler, startAllWorkflowSchedulers, stopAllWorkflowSchedulers } from "./workflow/scheduler-integration.js";
 import { getNotificationManager } from "./notifications/index.js";
 import { sendTextReply, handleMessageWithContext, handleMessageLegacy, type AgentSession, type PendingTask } from "./handlers/index.js";
 import {
@@ -148,6 +150,8 @@ function setupGracefulShutdown(agents: Map<string, AgentSession>): void {
       const sched = getScheduler(s.config.id);
       sched.stop();
     }
+    // 停止所有工作流调度器
+    stopAllWorkflowSchedulers();
     // 停止所有通知管理器
     for (const s of agents.values()) {
       const manager = getNotificationManager(s.config.id);
@@ -202,6 +206,29 @@ async function main() {
     },
   });
 
+  // 初始化工作流系统
+  for (const [agentId, session] of initializedAgents) {
+    const workflowManager = getWorkflowManager(agentId, session.config.workspace.path);
+    const workflowScheduler = getWorkflowScheduler(agentId, session.config.workspace.path);
+    
+    // 设置发送消息函数
+    const sendFn = async (chatId: string, contextToken: string, text: string) => {
+      try {
+        await sendTextReply(session.api, chatId, contextToken, text);
+        return { success: true };
+      } catch (e) {
+        console.error(`[Workflow] 发送消息失败: ${e}`);
+        return { success: false };
+      }
+    };
+    
+    workflowManager.setSendMessageFn(sendFn);
+    workflowScheduler.setSendMessageFn(sendFn);
+    
+    // 启动工作流调度器
+    workflowScheduler.start();
+  }
+
   // 转移到 activeAgents
   for (const [id, session] of initializedAgents) {
     activeAgents.set(id, session);
@@ -214,6 +241,7 @@ async function main() {
 
   console.log("\n=== 微信 Kimi Bot 已启动 ===");
   console.log(`活跃 Agent 数: ${activeAgents.size}`);
+  console.log("工作流系统: 已启用");
   console.log("按 Ctrl+C 停止\n");
 
   // 检查是否有重启通知需要发送
