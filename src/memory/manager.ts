@@ -343,3 +343,255 @@ export async function saveMemory(agentId: string, memory: AgentMemory): Promise<
 export async function loadMemory(agentId: string): Promise<AgentMemory | null> {
   return await agentManager.loadAgentMemory(agentId);
 }
+
+// ============ 智能记忆清理 ============
+
+export interface CleanMemoryResult {
+  success: boolean;
+  originalCount: {
+    facts: number;
+    projects: number;
+  };
+  cleanedCount: {
+    facts: number;
+    projects: number;
+  };
+  removedDuplicates: number;
+  removedOutdated: number;
+  mergedSimilar: number;
+  cleanedMemory?: AgentMemory;
+  error?: string;
+}
+
+/**
+ * 使用LLM智能清理和合并记忆
+ * 
+ * 1. 识别并合并重复或高度相似的事实
+ * 2. 识别并合并重复的项目
+ * 3. 移除过时或低价值的记忆
+ * 4. 标准化事实表述
+ */
+export async function cleanMemoryWithLLM(
+  memory: AgentMemory
+): Promise<CleanMemoryResult> {
+  const originalFactsCount = memory.facts.length;
+  const originalProjectsCount = memory.projects.length;
+
+  const systemPrompt = `你是一个记忆整理专家。你的任务是分析和整理用户的长期记忆，去除重复、合并相似、并标准化表述。
+
+输入格式：
+\`\`\`json
+{ "facts": [...], "projects": [...], "userProfile": {...} }
+\`\`\`
+
+输出格式：
+\`\`\`json
+{
+  "facts": [
+    {
+      "content": "整理后的事实描述",
+      "category": "personal|work|project|tech|preference|other",
+      "importance": 1-5
+    }
+  ],
+  "projects": [
+    {
+      "name": "项目名称",
+      "description": "项目描述",
+      "status": "active|paused|completed",
+      "techStack": ["技术1", "技术2"]
+    }
+  ],
+  "userProfile": {
+    "name": "姓名",
+    "role": "角色",
+    "preferences": ["偏好1", "偏好2"]
+  },
+  "stats": {
+    "removedDuplicates": 0,
+    "mergedSimilar": 0,
+    "removedOutdated": 0
+  }
+}
+\`\`\`
+
+整理规则：
+
+1. **合并重复事实**
+   - 内容完全相同或高度相似的事实合并为一条
+   - 保留重要性更高的版本
+   - 合并时间信息（保留最早的创建时间和最新的更新时间）
+
+2. **合并相似事实**
+   - 语义相近但表述不同的事实进行整合
+   - 例如："用户喜欢TypeScript" 和 "用户偏好使用TS开发" 合并为一条更完整的描述
+
+3. **项目去重**
+   - 项目名称相同或高度相似的合并
+   - 保留最新的描述和技术栈
+   - 合并时保留active状态优先
+
+4. **移除低价值记忆**
+   - 移除重要性为1且已过时的临时信息
+   - 保留核心身份信息、偏好、长期项目
+
+5. **标准化表述**
+   - 统一事实的表述风格
+   - 保持简洁明了，一句话描述一个事实
+   - 使用第三人称客观描述
+
+只输出JSON格式的结果，不要有其他解释。`;
+
+  const inputData = JSON.stringify({
+    facts: memory.facts.map(f => ({
+      content: f.content,
+      category: f.category,
+      importance: f.importance,
+      createdAt: f.createdAt,
+      updatedAt: f.updatedAt,
+    })),
+    projects: memory.projects.map(p => ({
+      name: p.name,
+      description: p.description,
+      status: p.status,
+      techStack: p.techStack,
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt,
+    })),
+    userProfile: memory.userProfile,
+  }, null, 2);
+
+  const finalPrompt = `${systemPrompt}\n\n=== 待整理的记忆数据 ===\n\n${inputData}`;
+
+  return new Promise((resolve) => {
+    const child = spawn("kimi", [
+      "--quiet",
+      "--prompt", finalPrompt,
+    ], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+
+    child.stdout.on("data", (data: Buffer) => {
+      stdout.push(data);
+    });
+
+    child.stderr.on("data", (data: Buffer) => {
+      stderr.push(data);
+    });
+
+    child.on("error", (err) => {
+      resolve({
+        success: false,
+        originalCount: { facts: originalFactsCount, projects: originalProjectsCount },
+        cleanedCount: { facts: originalFactsCount, projects: originalProjectsCount },
+        removedDuplicates: 0,
+        removedOutdated: 0,
+        mergedSimilar: 0,
+        error: `Kimi CLI 错误: ${err.message}`,
+      });
+    });
+
+    child.on("close", (code) => {
+      const output = Buffer.concat(stdout).toString("utf-8").trim();
+
+      if (code !== 0 && !output) {
+        const error = Buffer.concat(stderr).toString("utf-8");
+        resolve({
+          success: false,
+          originalCount: { facts: originalFactsCount, projects: originalProjectsCount },
+          cleanedCount: { facts: originalFactsCount, projects: originalProjectsCount },
+          removedDuplicates: 0,
+          removedOutdated: 0,
+          mergedSimilar: 0,
+          error: `Kimi CLI 退出码 ${code}: ${error}`,
+        });
+        return;
+      }
+
+      try {
+        // 尝试从输出中提取JSON
+        const jsonMatch = output.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+          resolve({
+            success: false,
+            originalCount: { facts: originalFactsCount, projects: originalProjectsCount },
+            cleanedCount: { facts: originalFactsCount, projects: originalProjectsCount },
+            removedDuplicates: 0,
+            removedOutdated: 0,
+            mergedSimilar: 0,
+            error: "无法从LLM输出中提取JSON",
+          });
+          return;
+        }
+
+        const result = JSON.parse(jsonMatch[0]);
+        const now = Date.now();
+
+        // 构建清理后的记忆
+        const cleanedMemory: AgentMemory = {
+          ...memory,
+          updatedAt: now,
+          facts: (result.facts || []).map((f: any, index: number) => ({
+            id: `fact_cleaned_${now}_${index}`,
+            content: f.content,
+            category: f.category || "other",
+            importance: f.importance || 3,
+            confidence: 0.9,
+            createdAt: now,
+            updatedAt: now,
+          })),
+          projects: (result.projects || []).map((p: any, index: number) => ({
+            id: `project_cleaned_${now}_${index}`,
+            name: p.name,
+            description: p.description || "",
+            status: p.status || "active",
+            techStack: p.techStack || [],
+            createdAt: now,
+            updatedAt: now,
+          })),
+        };
+
+        // 更新用户画像
+        if (result.userProfile) {
+          cleanedMemory.userProfile = {
+            ...memory.userProfile,
+            name: result.userProfile.name || memory.userProfile.name,
+            role: result.userProfile.role || memory.userProfile.role,
+            preferences: result.userProfile.preferences || memory.userProfile.preferences,
+          };
+        }
+
+        const stats = result.stats || {};
+
+        resolve({
+          success: true,
+          originalCount: {
+            facts: originalFactsCount,
+            projects: originalProjectsCount,
+          },
+          cleanedCount: {
+            facts: cleanedMemory.facts.length,
+            projects: cleanedMemory.projects.length,
+          },
+          removedDuplicates: stats.removedDuplicates || 0,
+          removedOutdated: stats.removedOutdated || 0,
+          mergedSimilar: stats.mergedSimilar || 0,
+          cleanedMemory,
+        });
+      } catch (error) {
+        resolve({
+          success: false,
+          originalCount: { facts: originalFactsCount, projects: originalProjectsCount },
+          cleanedCount: { facts: originalFactsCount, projects: originalProjectsCount },
+          removedDuplicates: 0,
+          removedOutdated: 0,
+          mergedSimilar: 0,
+          error: `解析LLM输出失败: ${error instanceof Error ? error.message : String(error)}`,
+        });
+      }
+    });
+  });
+}

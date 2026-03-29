@@ -11,7 +11,7 @@ import { existsSync } from "node:fs";
 import type { CommandContext, CommandHandler, PendingTaskInfo, UserWorkspace } from "./types.js";
 import { agentManager } from "../agent/manager.js";
 import { buildSystemPrompt, buildHelpPrompt, buildStatusPrompt } from "../agent/prompt-builder.js";
-import { formatMemoryForPrompt } from "../memory/manager.js";
+import { formatMemoryForPrompt, cleanMemoryWithLLM, saveMemory } from "../memory/manager.js";
 import { getVersionInfo } from "../version.js";
 import { getScheduler, formatCronDescription } from "../scheduler.js";
 import { getLongTaskManager, formatProgressMessage as formatLongTaskProgress } from "../longtask/manager.js";
@@ -271,12 +271,55 @@ function handleVersion(): string {
   return getVersionInfo();
 }
 
-async function handleMemory(_args: string, { session }: CommandContext): Promise<string> {
+async function handleMemory(args: string, { session }: CommandContext): Promise<string> {
+  const subCmd = args.trim().toLowerCase();
+  
+  // 处理 clean 子命令
+  if (subCmd === "clean") {
+    const memory = session.runtime.memory;
+    
+    // 检查是否有记忆可清理
+    if (memory.facts.length === 0 && memory.projects.length === 0) {
+      return "📭 暂无长期记忆需要清理。";
+    }
+    
+    // 调用LLM进行智能清理
+    const result = await cleanMemoryWithLLM(memory);
+    
+    if (!result.success || !result.cleanedMemory) {
+      return `❌ 记忆清理失败\n\n错误: ${result.error || "未知错误"}`;
+    }
+    
+    // 保存清理后的记忆
+    await saveMemory(session.config.id, result.cleanedMemory);
+    
+    // 更新 session 中的记忆
+    session.runtime.memory = result.cleanedMemory;
+    
+    return `✅ 记忆清理完成
+
+📊 统计信息：
+- 原始事实: ${result.originalCount.facts} 条 → ${result.cleanedCount.facts} 条
+- 原始项目: ${result.originalCount.projects} 个 → ${result.cleanedCount.projects} 个
+- 删除冗余: ${result.removedDuplicates} 条
+- 合并相似: ${result.mergedSimilar} 条
+- 移除过时: ${result.removedOutdated} 条
+
+记忆已保存，共 ${result.cleanedCount.facts} 条事实，${result.cleanedCount.projects} 个项目。`;
+  }
+  
+  // 默认显示记忆
   const memoryContext = formatMemoryForPrompt(session.runtime.memory);
   if (!memoryContext) {
     return "📭 暂无长期记忆\n\n记忆会在对话过程中自动提取和积累。";
   }
-  return `**长期记忆**\n\n${memoryContext}\n\n_共 ${session.runtime.memory.facts.length} 条事实，${session.runtime.memory.projects.length} 个项目_`;
+  return `**长期记忆**
+
+${memoryContext}
+
+_共 ${session.runtime.memory.facts.length} 条事实，${session.runtime.memory.projects.length} 个项目_
+
+💡 提示: 使用 \`/memory clean\` 可智能清理重复和冗余记忆`;
 }
 
 function handlePrompt(_args: string, { session }: CommandContext): string {
