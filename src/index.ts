@@ -605,7 +605,9 @@ async function handleAgentCommand(
         if (currentTask.status === "completed") {
           // 提取版本号（匹配最后一个，因为 npm 会输出旧版本，新版本在最后）
           const allMatches = [...(currentTask.result || "").matchAll(/v?\d+\.\d+\.\d+/g)];
-          const version = allMatches.length > 0 ? allMatches[allMatches.length - 1][0] : "未知";
+          const versionMatch = allMatches.length > 0 ? allMatches[allMatches.length - 1][0] : null;
+          // 去掉 v 前缀，保持格式一致（显示时会自动加上 v）
+          const version = versionMatch ? versionMatch.replace(/^v/, "") : "未知";
           
           // 发送部署成功通知（在重启前）
           const deployMessage = 
@@ -1773,7 +1775,9 @@ async function executeDeploy(
       if (code === 0) {
         // 提取版本号（匹配最后一个，因为 npm 会输出旧版本，新版本在最后）
         const allMatches = [...output.matchAll(/v?\d+\.\d+\.\d+/g)];
-        const version = allMatches.length > 0 ? allMatches[allMatches.length - 1][0] : "未知";
+        const versionMatch = allMatches.length > 0 ? allMatches[allMatches.length - 1][0] : null;
+        // 去掉 v 前缀，保持格式一致（显示时会自动加上 v）
+        const version = versionMatch ? versionMatch.replace(/^v/, "") : "未知";
         resolve({ success: true, version, output });
       } else {
         reject(new Error(`版本更新失败: ${errorOutput || output || `退出码: ${code}`}`));
