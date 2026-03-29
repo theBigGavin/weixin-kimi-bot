@@ -1379,6 +1379,12 @@ async function main() {
         console.log(`  [LongTask:${task.id}] 进度: ${progress.percent}% - ${progress.step}`);
       },
       onComplete: async (task: LongTask) => {
+        // deploy 命令会自己处理完成通知和重启，跳过默认通知
+        if (task.command?.startsWith("npm run version:")) {
+          console.log(`  [LongTask:${task.id}] 部署任务完成，跳过默认通知（由 deploy 命令处理）`);
+          return;
+        }
+        
         const statusEmoji = task.status === "completed" ? "✅" : "❌";
         const msg = `${statusEmoji} **耗时任务完成** \`${task.id}\`\n\n` +
           `状态: ${task.status === "completed" ? "成功" : "失败"}\n` +
