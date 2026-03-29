@@ -14,6 +14,7 @@ import {
   ResolutionResult,
 } from './types.js';
 import { ReferenceResolver } from './reference-resolver.js';
+import { llmIntentResolver } from './llm-intent-resolver.js';
 
 /**
  * 意图模式定义
@@ -258,6 +259,8 @@ export class IntentResolver {
   /**
    * 识别用户意图
    * 
+   * 优先级：LLM识别 > 正则模式匹配 > 上下文推断
+   * 
    * @param input 用户输入文本
    * @param context 当前会话上下文
    * @returns 识别结果
@@ -267,21 +270,30 @@ export class IntentResolver {
     const resolution = this.referenceResolver.resolve(input, context);
     const resolvedInput = resolution.resolvedText;
 
-    // 2. 基于模式的意图识别
+    // 2. 【优先】尝试使用LLM进行意图识别
+    try {
+      const llmIntent = await llmIntentResolver.identify(input, context);
+      console.log(`[IntentResolver] LLM识别成功: ${llmIntent.type} (置信度: ${llmIntent.confidence.toFixed(2)})`);
+      return llmIntent;
+    } catch (error) {
+      console.log(`[IntentResolver] LLM识别失败，使用正则fallback: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    // 3. 【Fallback】基于模式的意图识别
     let bestMatch = this.matchByPatterns(resolvedInput);
 
-    // 3. 基于上下文的意图推断
+    // 4. 基于上下文的意图推断
     const contextMatch = this.inferFromContext(resolvedInput, context);
 
-    // 4. 综合判断
+    // 5. 综合判断
     if (contextMatch && (!bestMatch || contextMatch.confidence > bestMatch.confidence)) {
       bestMatch = contextMatch;
     }
 
-    // 5. 提取实体
+    // 6. 提取实体
     const entities = this.extractEntities(resolvedInput);
 
-    // 6. 构建结果
+    // 7. 构建结果
     const intent: Intent = {
       type: bestMatch?.type || IntentType.UNKNOWN,
       confidence: bestMatch?.confidence || 0.5,
@@ -291,7 +303,7 @@ export class IntentResolver {
       references: resolution.references,
     };
 
-    // 7. 后处理：根据引用调整置信度
+    // 8. 后处理：根据引用调整置信度
     if (resolution.references.length > 0) {
       // 如果有明确引用，提高置信度
       const avgRefConfidence =
