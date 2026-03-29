@@ -78,9 +78,27 @@ import {
   type Intent,
 } from "./context/index.js";
 import { createOutputParser } from "./context/output-parser.js";
-import { createPromptBuilder } from "./prompt/index.js";
 
-const SESSION_EXPIRED_ERRCODE = -14;
+// ============ 工具函数导入 ============
+import {
+  extractText,
+  generateClientId,
+  chunkMessage,
+  MAX_MSG_LEN,
+} from "./utils/index.js";
+import {
+  parseCommand,
+  sleep,
+} from "./utils/index.js";
+
+// ============ 服务导入 ============
+import {
+  saveRestartInfo,
+  loadRestartInfo,
+  clearRestartInfo,
+  formatRestartNotification,
+} from "./services/restart-notify.js";
+import { createPromptBuilder } from "./prompt/index.js";
 
 // 新架构开关（用于渐进式迁移）
 const ENABLE_CONTEXT_AWARE = process.env.ENABLE_CONTEXT_AWARE !== "false"; // 默认启用
@@ -88,91 +106,10 @@ const ENABLE_CONTEXT_AWARE = process.env.ENABLE_CONTEXT_AWARE !== "false"; // �
 // 全局上下文系统实例
 let contextSystem: ReturnType<typeof initializeContextSystem> | null = null;
 
-// ============ 服务器重启通知 ============
+// ============ 常量和配置 ============
 
-const RESTART_INFO_FILE = join(homedir(), ".weixin-kimi-bot", "restart-info.json");
-
-interface RestartInfo {
-  timestamp: number;
-  reason: "deploy" | "manual" | "crash" | "unknown";
-  operator: string;
-  version?: string;
-  agentId?: string;
-  chatId?: string;
-  contextToken?: string;
-}
-
-/**
- * 保存重启信息到文件
- */
-function saveRestartInfo(info: RestartInfo): void {
-  try {
-    const dir = dirname(RESTART_INFO_FILE);
-    if (!existsSync(dir)) {
-      mkdirSync(dir, { recursive: true });
-    }
-    writeFileSync(RESTART_INFO_FILE, JSON.stringify(info, null, 2));
-  } catch (error) {
-    console.error("[RestartNotify] 保存重启信息失败:", error);
-  }
-}
-
-/**
- * 读取重启信息
- */
-function loadRestartInfo(): RestartInfo | null {
-  try {
-    if (existsSync(RESTART_INFO_FILE)) {
-      const data = readFileSync(RESTART_INFO_FILE, "utf-8");
-      return JSON.parse(data) as RestartInfo;
-    }
-  } catch (error) {
-    console.error("[RestartNotify] 读取重启信息失败:", error);
-  }
-  return null;
-}
-
-/**
- * 清除重启信息文件
- */
-function clearRestartInfo(): void {
-  try {
-    if (existsSync(RESTART_INFO_FILE)) {
-      unlinkSync(RESTART_INFO_FILE);
-    }
-  } catch (error) {
-    console.error("[RestartNotify] 清除重启信息失败:", error);
-  }
-}
-
-/**
- * 格式化重启通知消息
- */
-function formatRestartNotification(info: RestartInfo): string {
-  const timeStr = new Date(info.timestamp).toLocaleString("zh-CN");
-  const reasonMap: Record<string, string> = {
-    deploy: "部署新版本",
-    manual: "手动重启",
-    crash: "异常恢复",
-    unknown: "未知原因",
-  };
-
-  let msg = "🔄 **服务器已重启**\n\n";
-  msg += `⏰ 重启时间: ${timeStr}\n`;
-  msg += `📋 重启原因: ${reasonMap[info.reason] || info.reason}`;
-  if (info.version) {
-    msg += ` v${info.version}`;
-  }
-  msg += "\n";
-  msg += `👤 操作者: ${info.operator}\n`;
-  if (info.agentId) {
-    msg += `🤖 Agent: ${info.agentId}\n`;
-  }
-  msg += "\n✅ 服务已恢复正常运行。";
-
-  return msg;
-}
 const SESSION_PAUSE_MS = 60 * 60 * 1000;
+const SESSION_EXPIRED_ERRCODE = -14;
 
 // ============ Agent 运行时缓存 ============
 
@@ -222,21 +159,6 @@ const COMMANDS = {
   route: { desc: "智能任务路由 (analyze/stats/auto)" },
   auto: { desc: "开关自动路由 (on/off/status)" },
 };
-
-function parseCommand(text: string): { command: string; args: string } | null {
-  const trimmed = text.trim();
-  if (!trimmed.startsWith("/")) return null;
-  
-  const spaceIndex = trimmed.indexOf(" ");
-  if (spaceIndex === -1) {
-    return { command: trimmed.slice(1).toLowerCase(), args: "" };
-  }
-  
-  return {
-    command: trimmed.slice(1, spaceIndex).toLowerCase(),
-    args: trimmed.slice(spaceIndex + 1).trim(),
-  };
-}
 
 async function handleAgentCommand(
   session: AgentSession,
@@ -726,7 +648,7 @@ ${kimiSession.exists ? `- ID: \`${kimiSession.sessionId?.slice(0, 16)}...\`
             chatId: fromUser,
             contextToken: contextToken,
           });
-          console.log(`[Deploy] 已保存重启信息到 ${RESTART_INFO_FILE}`);
+          console.log(`[Deploy] 已保存重启信息`);
           
           // 延迟执行重启（给通知发送留出时间）
           setTimeout(() => {
@@ -1193,29 +1115,6 @@ ${kimiSession.exists ? `- ID: \`${kimiSession.sessionId?.slice(0, 16)}...\`
 }
 
 // ============ 消息处理 ============
-
-function extractText(msg: WeixinMessage): string {
-  if (!msg.item_list?.length) return "";
-  for (const item of msg.item_list) {
-    if (item.type === MessageItemType.TEXT && item.text_item?.text) {
-      const ref = item.ref_msg;
-      if (ref?.title) {
-        return `[引用: ${ref.title}]\n${item.text_item.text}`;
-      }
-      return item.text_item.text;
-    }
-    if (item.type === MessageItemType.VOICE && item.voice_item?.text) {
-      return item.voice_item.text;
-    }
-  }
-  return "";
-}
-
-const MAX_MSG_LEN = 4000;
-
-function generateClientId(): string {
-  return `wkb-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
-}
 
 async function sendTextReply(
   api: ApiOptions,
@@ -2369,10 +2268,6 @@ async function pollMessages(session: AgentSession): Promise<void> {
   }
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
 // ============ 部署功能 ============
 
 /**
@@ -2472,7 +2367,7 @@ async function executeDeploy(
     chatId: userId,
     contextToken: contextToken,
   });
-  console.log(`[Deploy] 已保存重启信息到 ${RESTART_INFO_FILE}`);
+  console.log(`[Deploy] 已保存重启信息`);
   
   // 步骤4: 延迟执行重启（给通知发送留出时间）
   setTimeout(() => {
