@@ -11,8 +11,9 @@ import {
   Reference,
   SessionContext,
   ConversationState,
+  ResolutionResult,
 } from './types.js';
-import { ReferenceResolver, ResolutionResult } from './reference-resolver.js';
+import { ReferenceResolver } from './reference-resolver.js';
 
 /**
  * 意图模式定义

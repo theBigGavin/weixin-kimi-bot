@@ -55,20 +55,20 @@ export class SessionContextManager {
     }
 
     // 2. 查持久化存储
-    context = await this.persistence.load(userId, agentId);
-    if (context) {
+    const persistedContext = await this.persistence.load(userId, agentId);
+    if (persistedContext) {
       // 恢复Map对象（JSON反序列化后变成普通对象）
-      context.activeOptions = this.restoreMap(context.activeOptions);
-      this.contexts.set(key, context);
+      persistedContext.activeOptions = this.restoreMap(persistedContext.activeOptions);
+      this.contexts.set(key, persistedContext);
       console.log(`[Context] 从持久化加载会话: ${key}`);
-      return context;
+      return persistedContext;
     }
 
     // 3. 创建新的上下文
-    context = this.createNew(userId, agentId);
-    this.contexts.set(key, context);
+    const newContext = this.createNew(userId, agentId);
+    this.contexts.set(key, newContext);
     console.log(`[Context] 创建新会话: ${key}`);
-    return context;
+    return newContext;
   }
 
   /**
