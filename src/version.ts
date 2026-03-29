@@ -9,8 +9,8 @@
 
 export const VERSION = {
   major: 0,
-  minor: 5,
-  patch: 5,
+  minor: 6,
+  patch: 0,
   
   /** 完整版本号 */
   get full(): string {
@@ -21,7 +21,7 @@ export const VERSION = {
   date: "2026-03-29",
   
   /** 版本说明 */
-  description: "修复版本号提取逻辑 - 从发布完成标识行精确提取",
+  description: "重构任务分发模块，实现基于 LLM 的任务复杂度分析",
 };
 
 /** 提交哈希（由构建时注入） */
