@@ -34,7 +34,7 @@ export async function longTaskHandler(args: string, context: CommandContext): Pr
 \`/longtask 分析这个项目的所有代码文件\``;
   }
 
-  if (args === "list") {
+  if (args.trim() === "list") {
     const tasks = ltManager.getUserTasks(fromUser);
     const historyRes = await ltManager.queryHistory({ userId: fromUser }, 10);
     const history = historyRes.items;
@@ -70,7 +70,7 @@ export async function longTaskHandler(args: string, context: CommandContext): Pr
     return response;
   }
 
-  if (args.startsWith("status ")) {
+  if (args.trim().startsWith("status ")) {
     const taskId = args.slice(7).trim();
     const task = ltManager.getTask(taskId);
     if (!task || task.userId !== fromUser) {
@@ -80,7 +80,7 @@ export async function longTaskHandler(args: string, context: CommandContext): Pr
     return formatProgressMessage(task, progress);
   }
 
-  if (args.startsWith("cancel ")) {
+  if (args.trim().startsWith("cancel ")) {
     const taskId = args.slice(7).trim();
     const success = await ltManager.cancel(taskId);
     return success
