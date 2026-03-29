@@ -10,7 +10,7 @@
 export const VERSION = {
   major: 0,
   minor: 5,
-  patch: 2,
+  patch: 3,
   
   /** 完整版本号 */
   get full(): string {
@@ -21,7 +21,7 @@ export const VERSION = {
   date: "2026-03-29",
   
   /** 版本说明 */
-  description: "实现 Task Router 智能任务路由系统",
+  description: "部署命令版本号提取错误 - 匹配最后一个版本号而非第一个",
 };
 
 /** 提交哈希（由构建时注入） */
