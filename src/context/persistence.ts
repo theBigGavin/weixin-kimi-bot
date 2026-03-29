@@ -5,7 +5,7 @@
  */
 
 import { SessionContext } from './types.js';
-import { mkdir, writeFile, readFile, unlink, rename } from 'fs/promises';
+import { mkdir, writeFile, readFile, unlink, copyFile } from 'fs/promises';
 import { join } from 'path';
 
 /**
@@ -54,30 +54,37 @@ export class ContextPersistence {
       activeOptions: Object.fromEntries(context.activeOptions),
     };
 
-    // 原子写入：先写临时文件，再重命名
-    const tempPath = `${path}.tmp`;
+    const data = JSON.stringify(serialized, null, 2);
+
+    // 策略1：尝试原子写入（先写临时文件，再覆盖）
+    const tempPath = `${path}.tmp.${Date.now()}`;
     
     try {
-      await writeFile(tempPath, JSON.stringify(serialized, null, 2), 'utf-8');
+      // 1. 写入临时文件
+      await writeFile(tempPath, data, 'utf-8');
       
-      // 在Windows上，需要先删除目标文件才能重命名
+      // 2. 复制到目标路径（原子操作）
+      await copyFile(tempPath, path);
+      
+      // 3. 删除临时文件
       try {
-        await unlink(path);
+        await unlink(tempPath);
       } catch {
-        // 文件不存在，忽略错误
+        // 忽略清理错误
       }
       
-      // 重命名临时文件
-      await rename(tempPath, path);
+      return;
     } catch (err) {
-      // 如果原子写入失败，尝试直接写入（非原子，但更安全）
-      console.error(`[Context] 原子写入失败，回退到直接写入: ${context.agentId}:${context.userId}`, err);
-      try {
-        await writeFile(path, JSON.stringify(serialized, null, 2), 'utf-8');
-      } catch (fallbackErr) {
-        console.error(`[Context] 直接写入也失败: ${context.agentId}:${context.userId}`, fallbackErr);
-        throw fallbackErr;
-      }
+      console.warn(`[Context] 原子写入失败: ${context.agentId}:${context.userId}`, err);
+    }
+
+    // 策略2：直接写入（更简单可靠）
+    try {
+      await writeFile(path, data, 'utf-8');
+      console.log(`[Context] 直接写入成功: ${context.agentId}:${context.userId}`);
+    } catch (err) {
+      console.error(`[Context] 直接写入也失败: ${context.agentId}:${context.userId}`, err);
+      throw err;
     }
   }
 
