@@ -205,6 +205,8 @@ export function buildHelpPrompt(runtime: AgentRuntime): string {
 /task - 定时任务管理
 /longtask - 耗时任务管理(支持进度报告、后台执行)
 /flowtask - 可靠任务流(结构化计划执行)
+/route - 智能任务路由(分析任务并选择执行模式)
+/auto - 开关自动路由(on/off)
 /deploy - 部署Bot (patch/minor/major)
 /ver - 查看Bot版本信息
 
@@ -227,6 +229,21 @@ export function buildHelpPrompt(runtime: AgentRuntime): string {
 - /flowtask approve <id> - 确认继续执行
 - /flowtask reject <id> [原因] - 拒绝执行
 - 特点: 结构化计划 | 状态机执行 | 人机协作 | 自动回滚
+
+**/route 详细说明(智能任务路由)：**
+- /route analyze <任务描述> - 分析任务复杂度并显示路由决策
+- /route stats - 查看路由统计信息
+- /route auto on/off - 开关自动路由
+- 自动分析任务复杂度，智能选择执行模式:
+  • direct: 直接执行(简单任务)
+  • longtask: 后台执行(中等复杂度)
+  • flowtask: 结构化执行(复杂任务)
+
+**/auto 详细说明：**
+- /auto on - 开启自动路由(系统智能选择执行模式)
+- /auto off - 关闭自动路由(所有任务直接执行)
+- /auto status - 查看当前状态
+- 开启后，系统会自动分析任务并路由到合适的执行模式
 
 **/deploy 详细说明：**
 - /deploy 或 /deploy patch - 部署补丁版本

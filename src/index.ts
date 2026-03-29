@@ -50,6 +50,16 @@ import type { LongTask, ProgressInfo as LongTaskProgressInfo } from "./longtask/
 import { getFlowTaskManager, formatProgressMessage as formatFlowTaskProgress, formatPlanForUserConfirmation } from "./flowtask/manager.js";
 import type { FlowTask, ProgressInfo as FlowTaskProgressInfo, HumanApprovalRequest } from "./flowtask/types.js";
 
+// Task Router 导入
+import {
+  getTaskRouter,
+  routeTask,
+  analyzeTask,
+  type TaskSubmission,
+  type ExecutionMode,
+  type RoutedTask,
+} from "./task-router/index.js";
+
 // Agent 相关导入
 import { agentManager } from "./agent/manager.js";
 import { buildSystemPrompt, buildWelcomeMessage, buildHelpPrompt, buildStatusPrompt } from "./agent/prompt-builder.js";
@@ -172,6 +182,9 @@ interface PendingTask {
 }
 const pendingTasks: Map<string, PendingTask> = new Map();
 
+// 用户自动路由偏好 (userId -> boolean)
+const userAutoRoute: Map<string, boolean> = new Map();
+
 // ============ 命令处理 ============
 
 const COMMANDS = {
@@ -186,6 +199,8 @@ const COMMANDS = {
   longtask: { desc: "耗时任务管理 (submit/status/list/cancel)" },
   flowtask: { desc: "可靠任务流 - 结构化计划执行 (run/status/list/cancel/approve)" },
   deploy: { desc: "部署 Bot (patch/minor/major)" },
+  route: { desc: "智能任务路由 (analyze/stats/auto)" },
+  auto: { desc: "开关自动路由 (on/off/status)" },
 };
 
 function parseCommand(text: string): { command: string; args: string } | null {
@@ -880,6 +895,137 @@ ${kimiSession.exists ? `- ID: \`${kimiSession.sessionId?.slice(0, 16)}...\`
       return `**FlowTask 可靠任务流**\n\n基于结构化计划的任务执行系统\n\n用法:\n- \`/flowtask run <任务描述>\` - 启动新任务\n- \`/flowtask list\` - 查看任务列表\n- \`/flowtask status <id>\` - 查看任务进度\n- \`/flowtask plan <id>\` - 查看执行计划\n- \`/flowtask cancel <id>\` - 取消任务\n- \`/flowtask approve <id>\` - 确认继续执行\n- \`/flowtask reject <id> [原因]\` - 拒绝执行\n\n特点: 结构化计划 | 状态机执行 | 人机协作 | 自动回滚`;
     }
 
+    case "route": {
+      const subCommandEnd = args.indexOf(" ");
+      const subCommand = subCommandEnd === -1 ? args : args.slice(0, subCommandEnd);
+      const subArgs = subCommandEnd === -1 ? "" : args.slice(subCommandEnd + 1).trim();
+      
+      // 获取 Task Router
+      const taskRouter = await getTaskRouter({
+        agentId: config.id,
+        useLLM: true,
+        llmModel: config.ai.model,
+        onProgress: async () => {},
+        onComplete: async () => {},
+      });
+      
+      // 分析任务
+      if (subCommand === "analyze" || subCommand === "") {
+        const prompt = subArgs.trim();
+        if (!prompt) {
+          return `**🧭 智能任务路由**
+
+用法:
+- \`/route analyze <任务描述>\` - 分析任务并显示路由决策
+- \`/route stats\` - 显示路由统计
+- \`/route auto on/off\` - 开关自动路由
+
+自动路由会根据任务复杂度智能选择执行模式:
+- **direct**: 直接执行（简单任务）
+- **longtask**: 后台执行（中等复杂度）
+- **flowtask**: 结构化执行（复杂任务）`;
+        }
+        
+        const userWorkspace = await getUserWorkspace(session, fromUser);
+        
+        await sendTextReply(
+          session.api,
+          fromUser,
+          contextToken,
+          "🤖 正在分析任务，请稍候..."
+        );
+        
+        const submission: TaskSubmission = {
+          prompt,
+          userId: fromUser,
+          chatId: fromUser,
+          contextToken,
+          cwd: userWorkspace.cwd,
+          model: config.ai.model,
+        };
+        
+        try {
+          const decision = await taskRouter.analyzeOnly(submission);
+          const analysis = decision.analysis;
+          
+          let response = `**🧭 任务分析结果**\n\n`;
+          response += `**建议模式**: ${decision.mode.toUpperCase()}\n`;
+          response += `**置信度**: ${(decision.confidence * 100).toFixed(1)}%\n`;
+          response += `**决策理由**: ${decision.reason}\n\n`;
+          
+          response += `**任务特征**:\n`;
+          response += `- 复杂度: ${analysis.complexity}/10\n`;
+          response += `- 预估耗时: ${analysis.estimatedDuration}秒\n`;
+          response += `- 预估步骤: ${analysis.stepCount}步\n`;
+          response += `- 风险等级: ${analysis.riskLevel === "high" ? "🔴 高" : analysis.riskLevel === "medium" ? "🟡 中" : "🟢 低"}\n`;
+          response += `- 领域: ${analysis.domain}\n`;
+          response += `- 需要规划: ${analysis.requiresPlanning ? "是" : "否"}\n`;
+          response += `- 涉及写操作: ${analysis.involvesWrite ? "是" : "否"}\n`;
+          response += `- 涉及多文件: ${analysis.involvesMultipleFiles ? "是" : "否"}\n`;
+          response += `- 分析来源: ${analysis.analysisSource}\n`;
+          
+          if (analysis.suggestedSubtasks && analysis.suggestedSubtasks.length > 0) {
+            response += `\n**建议子任务**:\n`;
+            for (const subtask of analysis.suggestedSubtasks.slice(0, 5)) {
+              response += `- ${subtask}\n`;
+            }
+          }
+          
+          response += `\n💡 发送 \`/auto on\` 开启自动路由，系统将根据分析结果自动选择执行模式`;
+          
+          return response;
+        } catch (error) {
+          return `❌ 分析失败: ${error instanceof Error ? error.message : String(error)}`;
+        }
+      }
+      
+      // 显示统计
+      if (subCommand === "stats") {
+        const stats = taskRouter.getStats();
+        let response = `**📊 路由统计**\n\n`;
+        response += `总分析次数: ${stats.totalAnalyzed}\n`;
+        response += `Direct 模式: ${stats.directCount}\n`;
+        response += `LongTask 模式: ${stats.longtaskCount}\n`;
+        response += `FlowTask 模式: ${stats.flowtaskCount}\n`;
+        response += `深度分析次数: ${stats.deepAnalysisCount}\n`;
+        response += `平均分析时间: ${stats.averageAnalysisTime}ms\n`;
+        response += `缓存命中率: ${(stats.cacheHitRate * 100).toFixed(1)}%\n`;
+        return response;
+      }
+      
+      // 开关自动路由
+      if (subCommand === "auto") {
+        const value = subArgs.trim().toLowerCase();
+        if (value === "on" || value === "true" || value === "1") {
+          userAutoRoute.set(fromUser, true);
+          return `✅ 自动路由已开启\n\n系统将根据任务复杂度自动选择执行模式。`;
+        } else if (value === "off" || value === "false" || value === "0") {
+          userAutoRoute.set(fromUser, false);
+          return `✅ 自动路由已关闭\n\n所有任务将直接执行，不再自动路由到 LongTask 或 FlowTask。`;
+        } else {
+          const current = userAutoRoute.get(fromUser) ?? false;
+          return `**自动路由状态**: ${current ? "✅ 开启" : "❌ 关闭"}\n\n用法: \`/route auto on/off\``;
+        }
+      }
+      
+      return `❓ 未知子命令: ${subCommand}\n\n可用: analyze, stats, auto`;
+    }
+
+    case "auto": {
+      const value = args.trim().toLowerCase();
+      if (value === "on" || value === "true" || value === "1") {
+        userAutoRoute.set(fromUser, true);
+        return `✅ 自动路由已开启\n\n系统将根据任务复杂度自动选择执行模式。`;
+      } else if (value === "off" || value === "false" || value === "0") {
+        userAutoRoute.set(fromUser, false);
+        return `✅ 自动路由已关闭\n\n所有任务将直接执行。`;
+      } else if (value === "status" || value === "") {
+        const current = userAutoRoute.get(fromUser) ?? false;
+        return `**自动路由状态**: ${current ? "✅ 开启" : "❌ 关闭"}`;
+      }
+      return `❓ 用法: \`/auto on/off/status\``;
+    }
+
     default:
       // 未知命令，返回提示而非传给Kimi
       return `❓ 未知命令: /${command}
@@ -894,6 +1040,8 @@ ${kimiSession.exists ? `- ID: \`${kimiSession.sessionId?.slice(0, 16)}...\`
 /task - 定时任务管理 (list/create/delete/toggle)
 /longtask - 耗时任务管理 (submit/status/list/cancel)
 /flowtask - 可靠任务流 (run/status/list/cancel/approve)
+/route - 智能任务路由 (analyze/stats/auto)
+/auto - 开关自动路由 (on/off/status)
 /deploy - 部署 Bot (patch/minor/major)
 
 直接发送消息可与AI对话。`
@@ -1194,8 +1342,104 @@ async function handleMessage(
     systemPrompt += buildFounderPrompt(session.config);
   }
 
-  // ========== 自动识别耗时任务 ==========
-  if (isLikelyLongTask(text)) {
+  // ========== 智能任务路由 ==========
+  const autoRouteEnabled = userAutoRoute.get(fromUser) ?? false;
+  
+  if (autoRouteEnabled) {
+    console.log(`  🧭 自动路由已开启，分析任务...`);
+    
+    const submission: TaskSubmission = {
+      prompt: text,
+      userId: fromUser,
+      chatId: fromUser,
+      contextToken,
+      cwd: userWorkspace.cwd,
+      model: session.config.ai.model,
+      systemPrompt,
+    };
+    
+    try {
+      const routedTask = await routeTask(session.config.id, submission, {
+        useLLM: true,
+        llmModel: session.config.ai.model,
+        onProgress: async (report) => {
+          console.log(`  [TaskRouter:${report.taskId}] ${report.percent}% - ${report.step}`);
+        },
+        onComplete: async (result) => {
+          console.log(`  [TaskRouter:${result.taskId}] 完成: ${result.success ? "成功" : "失败"}`);
+        },
+      });
+      
+      console.log(`  🧭 路由决策: ${routedTask.mode} (置信度: ${(routedTask.decision.confidence * 100).toFixed(1)}%)`);
+      
+      // 根据路由结果处理
+      switch (routedTask.mode) {
+        case "longtask": {
+          const ltManager = await getLongTaskManager(session.config.id);
+          const queueLen = ltManager.getQueueLength();
+          
+          const modeEmoji = "⏱️";
+          const reason = routedTask.decision.reason;
+          
+          let autoMsg = `${modeEmoji} **任务已智能路由到后台执行**\n\n`;
+          autoMsg += `ID: \`${routedTask.taskId}\`\n`;
+          autoMsg += `模式: LongTask\n`;
+          autoMsg += `置信度: ${(routedTask.decision.confidence * 100).toFixed(0)}%\n\n`;
+          autoMsg += `**分析**: ${reason}\n\n`;
+          
+          const task = ltManager.getTask(routedTask.taskId);
+          if (task && task.status === "pending" && queueLen > 0) {
+            autoMsg += `排队位置: 前面还有 ${queueLen} 个任务\n`;
+          }
+          autoMsg += `\n每 30 秒会收到进度报告。\n`;
+          autoMsg += `使用 \`/longtask status ${routedTask.taskId}\` 查看进度\n`;
+          autoMsg += `使用 \`/longtask cancel ${routedTask.taskId}\` 取消任务`;
+          
+          await sendTextReply(session.api, fromUser, contextToken, autoMsg);
+          console.log(`  📤 任务已路由到 LongTask: ${routedTask.taskId}`);
+          return;
+        }
+        
+        case "flowtask": {
+          const ftManager = getFlowTaskManager(session.config.id);
+          const queueLen = ftManager.getQueueLength();
+          
+          const modeEmoji = "🔄";
+          const reason = routedTask.decision.reason;
+          
+          let autoMsg = `${modeEmoji} **任务已智能路由到可靠任务流**\n\n`;
+          autoMsg += `ID: \`${routedTask.taskId}\`\n`;
+          autoMsg += `模式: FlowTask\n`;
+          autoMsg += `置信度: ${(routedTask.decision.confidence * 100).toFixed(0)}%\n\n`;
+          autoMsg += `**分析**: ${reason}\n\n`;
+          
+          const task = ftManager.getTask(routedTask.taskId);
+          if (task && task.status === "pending" && queueLen > 0) {
+            autoMsg += `排队位置: 前面还有 ${queueLen} 个任务\n`;
+          }
+          autoMsg += `\n系统将先生成执行计划，然后进行执行。\n`;
+          autoMsg += `使用 \`/flowtask status ${routedTask.taskId}\` 查看进度\n`;
+          autoMsg += `使用 \`/flowtask plan ${routedTask.taskId}\` 查看执行计划\n`;
+          autoMsg += `使用 \`/flowtask cancel ${routedTask.taskId}\` 取消任务`;
+          
+          await sendTextReply(session.api, fromUser, contextToken, autoMsg);
+          console.log(`  📤 任务已路由到 FlowTask: ${routedTask.taskId}`);
+          return;
+        }
+        
+        case "direct":
+        default:
+          // Direct 模式，继续执行原有逻辑
+          console.log(`  🧭 任务复杂度较低，直接执行`);
+          break;
+      }
+    } catch (error) {
+      console.error(`  ❌ 任务路由失败:`, error);
+      // 路由失败时回退到原有逻辑
+      console.log(`  🔄 回退到原有耗时任务检测`);
+    }
+  } else if (isLikelyLongTask(text)) {
+    // 原有的自动识别耗时任务逻辑（自动路由关闭时）
     console.log(`  ⏱️ 自动识别为耗时任务`);
     const ltManager = await getLongTaskManager(session.config.id);
     const task = ltManager.submit({
@@ -1248,36 +1492,6 @@ async function handleMessage(
     systemPrompt: systemPrompt,
     continueSession: sessionValid,  // 基于真实的 Kimi session 状态
   };
-
-  // 自动识别耗时任务
-  if (isLikelyLongTask(text)) {
-    console.log(`  ⏱️ 自动识别为耗时任务`);
-    const ltManager = await getLongTaskManager(session.config.id);
-    const task = ltManager.submit({
-      agentId: session.config.id,
-      userId: fromUser,
-      chatId: fromUser,
-      contextToken,
-      prompt: text,
-      cwd: userWorkspace.cwd,
-      model: session.config.ai.model,
-      systemPrompt,
-      maxTurns: session.config.ai.maxTurns,
-    });
-    
-    const queueLen = ltManager.getQueueLength();
-    let autoMsg = `⏱️ 检测到耗时任务，已自动转为后台执行\n\nID: \`${task.id}\`\n状态: ${task.status === "pending" ? "排队中" : "运行中"}\n`;
-    if (task.status === "pending" && queueLen > 0) {
-      autoMsg += `排队位置: 前面还有 ${queueLen} 个任务\n`;
-    }
-    autoMsg += `\n每 30 秒会收到进度报告。\n`;
-    autoMsg += `使用 \`/longtask status ${task.id}\` 查看进度\n`;
-    autoMsg += `使用 \`/longtask cancel ${task.id}\` 取消任务`;
-    
-    await sendTextReply(session.api, fromUser, contextToken, autoMsg);
-    console.log(`  📤 已自动提交耗时任务: ${task.id}`);
-    return;
-  }
 
   // 显示输入中
   showTyping(session.api, fromUser, contextToken);
