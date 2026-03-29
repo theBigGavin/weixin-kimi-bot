@@ -1506,11 +1506,12 @@ async function executeDeploy(
 ): Promise<string> {
   const { spawn } = await import("node:child_process");
   
-  return new Promise((resolve, reject) => {
-    const deployScript = `npm run deploy:${versionType}`;
-    console.log(`[Deploy] 开始执行: ${deployScript} in ${projectPath}`);
+  // 步骤1: 执行版本更新（不重启）
+  const versionResult = await new Promise<{ success: boolean; version: string; output: string }>((resolve, reject) => {
+    const versionScript = `npm run version:${versionType}`;
+    console.log(`[Deploy] 开始执行: ${versionScript} in ${projectPath}`);
     
-    const child = spawn("npm", ["run", `deploy:${versionType}`], {
+    const child = spawn("npm", ["run", `version:${versionType}`], {
       cwd: projectPath,
       stdio: ["ignore", "pipe", "pipe"],
       shell: true,
@@ -1535,7 +1536,7 @@ async function executeDeploy(
       }
     });
     
-    // 设置5分钟超时
+    // 设置2分钟超时
     const timeoutId = setTimeout(() => {
       child.kill("SIGTERM");
       setTimeout(() => {
@@ -1543,12 +1544,12 @@ async function executeDeploy(
           child.kill("SIGKILL");
         }
       }, 5000);
-      reject(new Error("部署超时（5分钟）"));
-    }, 5 * 60 * 1000);
+      reject(new Error("版本更新超时（2分钟）"));
+    }, 2 * 60 * 1000);
     
     child.on("error", (err) => {
       clearTimeout(timeoutId);
-      reject(new Error(`启动部署失败: ${err.message}`));
+      reject(new Error(`启动版本更新失败: ${err.message}`));
     });
     
     child.on("close", (code) => {
@@ -1561,25 +1562,37 @@ async function executeDeploy(
         // 提取版本号
         const versionMatch = output.match(/v?\d+\.\d+\.\d+/);
         const version = versionMatch ? versionMatch[0] : "未知";
-        
-        // 生成简洁的部署报告
-        const lines = output.split("\n").filter(l => l.trim());
-        const lastLines = lines.slice(-10).join("\n");
-        
-        resolve(
-          `✅ **部署成功**\n\n` +
-          `版本: ${version}\n` +
-          `类型: ${versionType}\n` +
-          `时间: ${new Date().toLocaleString("zh-CN")}\n\n` +
-          `---\n` +
-          `*最近输出*:\n\`\`\`\n${lastLines.slice(0, 500)}${lastLines.length > 500 ? "\n..." : ""}\n\`\`\``
-        );
+        resolve({ success: true, version, output });
       } else {
-        const errorMsg = errorOutput || output || `退出码: ${code}`;
-        reject(new Error(`部署失败: ${errorMsg.slice(0, 200)}`));
+        reject(new Error(`版本更新失败: ${errorOutput || output || `退出码: ${code}`}`));
       }
     });
   });
+
+  // 步骤2: 发送部署成功通知（在重启前）
+  const deployMessage = 
+    `✅ **部署成功**\n\n` +
+    `版本: ${versionResult.version}\n` +
+    `类型: ${versionType}\n` +
+    `时间: ${new Date().toLocaleString("zh-CN")}\n\n` +
+    `🔄 服务将在 3 秒后重启以应用新版本...`;
+  
+  // 立即发送通知
+  await sendTextReply(api, userId, contextToken, deployMessage);
+  console.log(`[Deploy] 已发送部署成功通知，3秒后重启服务...`);
+  
+  // 步骤3: 延迟执行重启（给通知发送留出时间）
+  setTimeout(() => {
+    console.log(`[Deploy] 执行服务重启...`);
+    const restartChild = spawn("pm2", ["restart", "weixin-kimi-bot"], {
+      cwd: projectPath,
+      stdio: "ignore",
+      detached: true, // 分离进程，避免被当前进程阻塞
+    });
+    restartChild.unref(); // 不等待子进程结束
+  }, 3000);
+  
+  return deployMessage;
 }
 
 main().catch((err) => {
