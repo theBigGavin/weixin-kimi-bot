@@ -10,7 +10,7 @@
 export const VERSION = {
   major: 0,
   minor: 4,
-  patch: 3,
+  patch: 4,
   
   /** 完整版本号 */
   get full(): string {
@@ -18,10 +18,10 @@ export const VERSION = {
   },
   
   /** 版本日期（最后一次更新日期） */
-  date: "2026-03-28",
+  date: "2026-03-29",
   
   /** 版本说明 */
-  description: "add flowtask command handler",
+  description: "FlowTask V2 - 继承LongTask后台执行能力 + 自动任务拆分",
 };
 
 /** 提交哈希（由构建时注入） */
