@@ -4,26 +4,10 @@
  * Kimi CLI --print --output-format stream-json 输出格式:
  * 每行一个 JSON 对象，包含 role/assistant 的 tool_calls 和 content
  */
-import type { ProgressInfo } from "./types.js";
+import type { ProgressInfo, ToolPrediction } from "./types.js";
+import { calculateProgressPercent, TOOL_STEP_MAP } from "./tool-predictor.js";
 
-// 工具名到步骤描述的映射
-const TOOL_STEP_MAP: Record<string, string> = {
-  Shell: "执行命令",
-  ReadFile: "读取文件",
-  WriteFile: "写入文件",
-  StrReplaceFile: "修改文件",
-  Grep: "搜索代码",
-  Glob: "查找文件",
-  Agent: "启动子代理",
-  TaskList: "任务管理",
-  TaskOutput: "获取任务输出",
-  SearchWeb: "搜索网络",
-  FetchURL: "获取网页",
-  AskUserQuestion: "询问用户",
-  EnterPlanMode: "计划模式",
-  ExitPlanMode: "退出计划",
-  SetTodoList: "更新待办",
-};
+
 
 interface ParsedToolCall {
   name: string;
@@ -85,12 +69,17 @@ function parseStreamJson(output: string): ParsedStreamEntry {
  * 当前使用 --print --output-format stream-json 模式，
  * 从 JSON 流中解析 tool_calls 来跟踪实际执行进度。
  */
-export function parseProgress(output: string, maxTurns: number, _currentTurnEstimate: number): ProgressInfo {
+export function parseProgress(
+  output: string,
+  prediction: ToolPrediction | undefined,
+  maxTurns: number,
+  _currentTurnEstimate: number
+): ProgressInfo {
   const { toolCalls, think, text } = parseStreamJson(output);
 
-  // 基于实际工具调用次数估算百分比
+  // 基于实际工具调用次数和预测结果估算百分比
   const actualSteps = toolCalls.length;
-  let percent = Math.min(95, Math.round((actualSteps / Math.max(1, maxTurns)) * 100));
+  const { percent, predictedTotal } = calculateProgressPercent(actualSteps, prediction, maxTurns);
 
   let step = "处理中";
   let fileName: string | undefined;
@@ -110,14 +99,16 @@ export function parseProgress(output: string, maxTurns: number, _currentTurnEsti
         detail = lastTool.arguments.slice(0, 120);
       }
     }
+
+    // 添加进度详情
+    const progressDetail = `已完成 ${actualSteps}/${predictedTotal} 步`;
+    detail = detail ? `${progressDetail} | ${detail}` : progressDetail;
   } else if (think) {
     step = "思考中";
     detail = think.slice(0, 120);
-    percent = Math.min(percent, 25);
   } else if (text) {
     step = "生成回复中";
     detail = text.slice(0, 120);
-    percent = Math.min(percent, 50);
   }
 
   return {
@@ -126,6 +117,8 @@ export function parseProgress(output: string, maxTurns: number, _currentTurnEsti
     percent,
     detail,
     timestamp: Date.now(),
+    predictedTotalSteps: predictedTotal,
+    completedSteps: actualSteps,
   };
 }
 

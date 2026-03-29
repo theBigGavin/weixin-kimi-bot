@@ -37,6 +37,8 @@ export interface TaskSnapshot {
   snapshotVersion: number;
   /** 最后更新时间 */
   lastUpdatedAt: number;
+  /** 工具调用预测 */
+  toolPrediction?: ToolPrediction;
 }
 
 export interface ProgressInfo {
@@ -45,6 +47,27 @@ export interface ProgressInfo {
   percent: number;        // 0-100
   detail?: string;        // 额外详情
   timestamp: number;
+  /** 基于预测的总步骤数 */
+  predictedTotalSteps?: number;
+  /** 已完成的步骤数 */
+  completedSteps?: number;
+}
+
+/**
+ * 预测的工具调用
+ */
+export interface PredictedToolCall {
+  name: string;
+  reason: string;
+}
+
+/**
+ * 工具调用预测结果
+ */
+export interface ToolPrediction {
+  predictedTools: PredictedToolCall[];
+  confidence: number; // 0-1
+  reasoning?: string;
 }
 
 export interface LongTask {
@@ -68,6 +91,8 @@ export interface LongTask {
   maxTurns: number;
   /** 自定义命令（如果设置，则执行此命令而非 kimi） */
   command?: string;
+  /** 工具调用预测 */
+  toolPrediction?: ToolPrediction;
 }
 
 export interface LongTaskHistoryRecord {

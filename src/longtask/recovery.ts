@@ -444,6 +444,7 @@ export function rebuildTaskFromSnapshot(snapshot: TaskSnapshot): LongTask {
     model: snapshot.model,
     systemPrompt: snapshot.systemPrompt,
     maxTurns: snapshot.maxTurns,
+    toolPrediction: snapshot.toolPrediction,
   };
 }
 

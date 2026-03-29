@@ -26,6 +26,8 @@ export type {
   HistoryQueryFilter,
   QueryResult,
   RecoveredTask,
+  PredictedToolCall,
+  ToolPrediction,
 } from "./types.js";
 
 // 核心类导出
@@ -39,6 +41,12 @@ export {
 
 // 工具函数导出
 export { parseProgress, formatProgressMessage } from "./parser.js";
+export {
+  ToolPredictor,
+  defaultToolPredictor,
+  calculateProgressPercent,
+  formatPredictionSummary,
+} from "./tool-predictor.js";
 
 // 版本信息
 export const VERSION = "2.0.0";

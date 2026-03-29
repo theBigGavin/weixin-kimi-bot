@@ -28,6 +28,7 @@ import type {
   RecoveredTask,
 } from "./types.js";
 import { parseProgress, parseCommandProgress, formatProgressMessage, extractFinalResult } from "./parser.js";
+import { ToolPredictor, defaultToolPredictor } from "./tool-predictor.js";
 import { TaskPersistenceManager } from "./persistence.js";
 import { TaskRecoveryManager, RecoveryResult, rebuildTaskFromSnapshot } from "./recovery.js";
 
@@ -40,6 +41,7 @@ export class LongTaskManager {
   private dataDir: string;
   private persistence: TaskPersistenceManager;
   private recovery: TaskRecoveryManager;
+  private toolPredictor: ToolPredictor;
   private initialized = false;
 
   constructor(agentId: string, options: Partial<LongTaskManagerOptions> = {}) {
@@ -72,6 +74,9 @@ export class LongTaskManager {
       this.dataDir,
       this.options.persistence
     );
+
+    // 初始化工具调用预测器
+    this.toolPredictor = defaultToolPredictor;
 
     // 初始化恢复管理器
     this.recovery = new TaskRecoveryManager({
@@ -121,15 +126,23 @@ export class LongTaskManager {
    */
   submit(task: Omit<LongTask, "id" | "status" | "createdAt" | "progressLogs">): LongTask {
     const id = `lt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+    // 进行工具调用预测
+    const toolPrediction = this.toolPredictor.predict(task.prompt);
+
     const fullTask: LongTask = {
       ...task,
       id,
       status: "pending",
       createdAt: Date.now(),
+      toolPrediction,
       progressLogs: [{
         step: "等待开始",
         percent: 0,
         timestamp: Date.now(),
+        detail: `预测: ${toolPrediction.predictedTools.map(t => t.name).join(" → ")} (${toolPrediction.predictedTools.length}步, 置信度${Math.round(toolPrediction.confidence * 100)}%)`,
+        predictedTotalSteps: toolPrediction.predictedTools.length,
+        completedSteps: 0,
       }],
     };
 
@@ -366,6 +379,7 @@ export class LongTaskManager {
     let child: ReturnType<typeof spawn>;
     let turnEstimate = 1;
     let isCommandTask = false;
+    const toolPrediction = task.toolPrediction;
 
     if (task.command) {
       // 自定义命令任务
@@ -413,7 +427,7 @@ export class LongTaskManager {
         if (isCommandTask) {
           progress = parseCommandProgress(combinedOutput, task.command || "", turnEstimate);
         } else {
-          progress = parseProgress(combinedOutput, task.maxTurns, turnEstimate);
+          progress = parseProgress(combinedOutput, toolPrediction, task.maxTurns, turnEstimate);
         }
         task.progressLogs.push(progress);
         
