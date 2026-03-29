@@ -27,10 +27,18 @@ import {
 import { askKimi, checkKimiInstalled, ensureKimiAuthenticated, isLikelyLongTask } from "./kimi/handler.js";
 import type { KimiOptions } from "./kimi/handler.js";
 import {
+  checkKimiSession,
+  clearKimiSessions,
+} from "./kimi/session.js";
+import {
   loadSyncBuf,
   saveSyncBuf,
   getContextToken,
   setContextToken,
+  loadUserSessionMeta,
+  saveUserSessionMeta,
+  incrementUserTurnCount,
+  resetUserSessionMeta,
 } from "./store.js";
 import { getScheduler, formatCronDescription, parseNaturalLanguageToCron, type ParsedTaskInfo } from "./scheduler.js";
 import { getNotificationManager } from "./notifications/index.js";
@@ -223,25 +231,79 @@ async function handleAgentCommand(
         }
       }
       
-      // 清除用户 Kimi session 目录（所有Agent统一使用 .sessions/{userId}/）
+      // 获取用户工作目录
       const cacheKey = `${fromUser}:workspace`;
       const cached = session.userWorkspaces.get(cacheKey);
       
       if (cached) {
         const userWorkspace: UserWorkspace = JSON.parse(cached);
+        
+        // 1. 清理 Kimi CLI 的 session（真正的 session 清理）
         try {
-          await rm(userWorkspace.cwd, { recursive: true, force: true });
-          session.userWorkspaces.delete(cacheKey);
-          console.log(`  🗑️ 已重置用户 session: ${fromUser}`);
+          const cleared = await clearKimiSessions(userWorkspace.cwd);
+          if (cleared) {
+            console.log(`  🗑️ 已清理 Kimi session: ${fromUser}`);
+          }
         } catch (e) {
-          console.error(`  ⚠️ 重置 session 失败: ${e}`);
+          console.error(`  ⚠️ 清理 Kimi session 失败: ${e}`);
+        }
+        
+        // 2. 重置用户工作目录（保留软链接）
+        try {
+          // 只删除实际文件，保留 project 和 workspace 软链接
+          const { readdir } = await import("node:fs/promises");
+          const files = await readdir(userWorkspace.cwd);
+          for (const file of files) {
+            if (file !== "project" && file !== "workspace") {
+              await rm(join(userWorkspace.cwd, file), { recursive: true, force: true });
+            }
+          }
+          session.userWorkspaces.delete(cacheKey);
+          console.log(`  🗑️ 已重置用户工作目录: ${fromUser}`);
+        } catch (e) {
+          console.error(`  ⚠️ 重置工作目录失败: ${e}`);
         }
       }
       
-      // 重置对话轮次
+      // 3. 重置 session 元数据
+      resetUserSessionMeta(session.config.id, fromUser);
+      console.log(`  🗑️ 已重置 session 元数据: ${fromUser}`);
+      
+      // 4. 重置内存中的对话状态
       session.conversationTurns.delete(fromUser);
       session.lastMemoryExtract.delete(fromUser);
+      
       return "🔄 对话上下文已重置，配置已重新加载。系统提示词将在下一条消息重新注入。";
+    }
+
+    case "session": {
+      const subCmd = args || "status";
+      const userWorkspace = await getUserWorkspace(session, fromUser);
+      const sessionMeta = loadUserSessionMeta(session.config.id, fromUser);
+      const kimiSession = await checkKimiSession(userWorkspace.cwd);
+      
+      if (subCmd === "status") {
+        return `
+📊 Session 状态
+
+**Agent:** ${session.config.id}
+**用户:** ${fromUser}
+**工作目录:** \`${userWorkspace.cwd}\`
+
+**对话统计:**
+- 轮次: ${sessionMeta?.turnCount || 0}
+- 最后对话: ${sessionMeta?.lastMessageAt ? new Date(sessionMeta.lastMessageAt).toLocaleString("zh-CN") : "无"}
+
+**Kimi Session:** ${kimiSession.exists ? "✅ 存在" : "❌ 不存在"}
+${kimiSession.exists ? `- ID: \`${kimiSession.sessionId?.slice(0, 16)}...\`
+- 最后修改: ${kimiSession.lastModified ? new Date(kimiSession.lastModified).toLocaleString("zh-CN") : "未知"}
+- 上下文大小: ${kimiSession.contextSize ? `${(kimiSession.contextSize / 1024).toFixed(1)} KB` : "未知"}` : ""}
+
+使用 \`/reset\` 重置 session
+        `.trim();
+      }
+      
+      return "未知命令，可用: /session status";
     }
 
     case "template": {
@@ -1162,18 +1224,21 @@ async function handleMessage(
     return;
   }
 
-  // 检查是否存在有效的 session（目录下有文件才使用 --continue）
-  let hasExistingSession = false;
-  if (turns > 0) {
-    try {
-      const { readdir } = await import("node:fs/promises");
-      const files = await readdir(userWorkspace.cwd);
-      // 排除软链接，检查是否有实际的 session 文件
-      hasExistingSession = files.filter(f => f !== "project" && f !== "workspace").length > 0;
-    } catch {
-      hasExistingSession = false;
-    }
-  }
+  // 加载持久化的 session 元数据
+  const sessionMeta = loadUserSessionMeta(session.config.id, fromUser);
+  
+  // 检测 Kimi CLI 是否存在有效的 session
+  const kimiSession = await checkKimiSession(userWorkspace.cwd);
+  
+  // 判断是否应复用 session：
+  // 1. Kimi CLI 有有效的 session 文件
+  // 2. 并且有对话历史（turns > 0）或 session 是最近创建的（24小时内）
+  const sessionValid = Boolean(kimiSession.exists && (
+    (sessionMeta?.turnCount || 0) > 0 ||
+    (kimiSession.lastModified && Date.now() - kimiSession.lastModified < 24 * 60 * 60 * 1000)
+  ));
+  
+  console.log(`  📊 Session 状态: Kimi=${kimiSession.exists ? '✓' : '✗'}, turns=${sessionMeta?.turnCount || 0}, continue=${sessionValid}`);
 
   const kimiOpts: KimiOptions & { systemPrompt?: string } = {
     model: session.config.ai.model,
@@ -1181,7 +1246,7 @@ async function handleMessage(
     maxTurns: session.config.ai.maxTurns,
     planMode: false,
     systemPrompt: systemPrompt,
-    continueSession: hasExistingSession,  // 只有存在有效 session 时才复用
+    continueSession: sessionValid,  // 基于真实的 Kimi session 状态
   };
 
   // 自动识别耗时任务
@@ -1228,6 +1293,10 @@ async function handleMessage(
 
     // 更新轮次
     session.conversationTurns.set(fromUser, turns + 1);
+    
+    // 持久化 session 元数据（用于进程重启后恢复）
+    const newTurnCount = incrementUserTurnCount(session.config.id, fromUser, kimiSession.sessionId);
+    console.log(`  💾 Session 元数据已保存 (turns: ${newTurnCount})`);
 
     // 提取记忆（如果启用）
     if (session.config.memory.enabled && session.config.memory.autoExtract) {

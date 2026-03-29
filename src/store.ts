@@ -374,3 +374,129 @@ export function migrateOldData(agentId: string): void {
     fs.copyFileSync(oldTokensPath, newTokensPath);
   }
 }
+
+// ============ Session 元数据持久化（用于 Kimi CLI session 对齐） ============
+
+/**
+ * 用户-Agent 对话会话元数据
+ * 用于持久化 turns 计数，确保进程重启后能正确恢复 session
+ */
+export interface UserSessionMeta {
+  userId: string;
+  agentId: string;
+  turnCount: number;        // 对话轮次
+  lastMessageAt: number;    // 最后对话时间戳
+  kimiSessionId?: string;   // Kimi CLI 的 session ID（可选，用于调试）
+}
+
+/**
+ * 获取 session 元数据存储路径
+ */
+function getSessionMetaDir(agentId: string): string {
+  const dir = path.join(getAgentDir(agentId), "session-meta");
+  ensureDir(dir);
+  return dir;
+}
+
+/**
+ * 获取用户 session 元数据文件路径
+ */
+function getSessionMetaPath(agentId: string, userId: string): string {
+  // 对用户ID进行简单编码，避免特殊字符问题
+  const encodedUserId = Buffer.from(userId).toString("base64url");
+  return path.join(getSessionMetaDir(agentId), `${encodedUserId}.json`);
+}
+
+/**
+ * 加载用户 session 元数据
+ */
+export function loadUserSessionMeta(
+  agentId: string,
+  userId: string
+): UserSessionMeta | null {
+  try {
+    const metaPath = getSessionMetaPath(agentId, userId);
+    const raw = fs.readFileSync(metaPath, "utf-8");
+    return JSON.parse(raw) as UserSessionMeta;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 保存用户 session 元数据
+ */
+export function saveUserSessionMeta(
+  agentId: string,
+  userId: string,
+  meta: Partial<UserSessionMeta>
+): void {
+  const existing = loadUserSessionMeta(agentId, userId);
+  const merged = {
+    turnCount: 0,
+    lastMessageAt: 0,
+    ...existing,
+    ...meta,
+  };
+  
+  // 确保 userId 和 agentId 不被覆盖
+  const updated: UserSessionMeta = {
+    ...merged,
+    userId,
+    agentId,
+  };
+  
+  const metaPath = getSessionMetaPath(agentId, userId);
+  fs.writeFileSync(metaPath, JSON.stringify(updated, null, 2));
+}
+
+/**
+ * 增加用户对话轮次计数
+ */
+export function incrementUserTurnCount(
+  agentId: string,
+  userId: string,
+  kimiSessionId?: string
+): number {
+  const meta = loadUserSessionMeta(agentId, userId);
+  const newCount = (meta?.turnCount || 0) + 1;
+  
+  saveUserSessionMeta(agentId, userId, {
+    turnCount: newCount,
+    lastMessageAt: Date.now(),
+    kimiSessionId,
+  });
+  
+  return newCount;
+}
+
+/**
+ * 重置用户 session 元数据
+ */
+export function resetUserSessionMeta(
+  agentId: string,
+  userId: string
+): void {
+  saveUserSessionMeta(agentId, userId, {
+    turnCount: 0,
+    lastMessageAt: 0,
+    kimiSessionId: undefined,
+  });
+}
+
+/**
+ * 删除用户 session 元数据文件
+ */
+export function deleteUserSessionMeta(
+  agentId: string,
+  userId: string
+): void {
+  try {
+    const metaPath = getSessionMetaPath(agentId, userId);
+    if (fs.existsSync(metaPath)) {
+      fs.unlinkSync(metaPath);
+    }
+  } catch (e) {
+    console.error(`Failed to delete session meta for ${userId}:`, e);
+  }
+}

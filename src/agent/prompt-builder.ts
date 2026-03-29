@@ -198,6 +198,7 @@ export function buildHelpPrompt(runtime: AgentRuntime): string {
 **基础命令：**
 /help - 显示此帮助
 /reset - 重置对话上下文
+/session status - 查看当前 session 状态
 /status - 查看Agent状态
 /template - 查看/切换能力模板
 /memory - 管理长期记忆
