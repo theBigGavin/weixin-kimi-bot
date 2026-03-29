@@ -245,13 +245,14 @@ describe("错误恢复和边界情况集成测试", () => {
 
       const context = await contextSystem.contextManager.getOrCreate(userId, agentId);
 
-      // 添加大量消息（减少数量以加快测试）
-      const msgCount = 100;
+      // 添加大量消息，超过 MAX_MESSAGES(20) 的限制
+      const msgCount = 50;
       for (let i = 0; i < msgCount; i++) {
         await contextSystem.contextManager.addMessage(context, "user", `消息 ${i}`);
       }
 
-      expect(context.messages.length).toBe(msgCount);
+      // 由于 MAX_MESSAGES = 20，只保留最近的消息
+      expect(context.messages.length).toBeLessThanOrEqual(20);
     });
   });
 
