@@ -14,9 +14,10 @@ export async function routeHandler(
 ): Promise<string> {
   const { session, fromUser, contextToken } = context;
 
-  const subCommandEnd = args.indexOf(" ");
-  const subCommand = subCommandEnd === -1 ? args : args.slice(0, subCommandEnd);
-  const subArgs = subCommandEnd === -1 ? "" : args.slice(subCommandEnd + 1).trim();
+  const trimmedArgs = args.trim();
+  const subCommandEnd = trimmedArgs.indexOf(" ");
+  const subCommand = subCommandEnd === -1 ? trimmedArgs : trimmedArgs.slice(0, subCommandEnd);
+  const subArgs = subCommandEnd === -1 ? "" : trimmedArgs.slice(subCommandEnd + 1).trim();
 
   const taskRouter = await getTaskRouter({
     agentId: session.config.id,
@@ -26,7 +27,7 @@ export async function routeHandler(
     onComplete: async () => {},
   });
 
-  if (subCommand === "analyze" || subCommand === "") {
+  if (subCommand === "" || subCommand === "analyze") {
     const prompt = subArgs.trim();
     if (!prompt) {
       return `**🧭 智能任务路由**

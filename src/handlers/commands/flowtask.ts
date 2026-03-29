@@ -11,11 +11,12 @@ export async function flowTaskHandler(args: string, context: CommandContext): Pr
   const { session, fromUser, contextToken } = context;
   const ftManager = getFlowTaskManager(session.config.id);
 
-  const subCommandEnd = args.indexOf(" ");
-  const subCommand = subCommandEnd === -1 ? args : args.slice(0, subCommandEnd);
-  const subArgs = subCommandEnd === -1 ? "" : args.slice(subCommandEnd + 1).trim();
+  const trimmedArgs = args.trim();
+  const subCommandEnd = trimmedArgs.indexOf(" ");
+  const subCommand = subCommandEnd === -1 ? trimmedArgs : trimmedArgs.slice(0, subCommandEnd);
+  const subArgs = subCommandEnd === -1 ? "" : trimmedArgs.slice(subCommandEnd + 1).trim();
 
-  if (subCommand === "list" || subCommand === "") {
+  if (subCommand === "list") {
     const tasks = ftManager.getUserTasks(fromUser);
     const history = ftManager.loadHistory(10);
 

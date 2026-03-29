@@ -13,7 +13,7 @@ export async function taskHandler(
   const { session, fromUser, contextToken } = context;
   const scheduler = getScheduler(session.config.id);
 
-  if (args === "list" || args === "") {
+  if (args.trim() === "list" || args.trim() === "") {
     const tasks = scheduler.getAllTasks();
     if (tasks.length === 0) {
       return "📋 暂无定时任务\n\n使用 `/task create <描述>` 创建任务";
@@ -29,7 +29,7 @@ export async function taskHandler(
     return response;
   }
 
-  if (args.startsWith("delete ")) {
+  if (args.trim().startsWith("delete ")) {
     const taskId = args.slice(7).trim();
     if (!taskId) return "❌ 请提供任务ID\n\n用法: `/task delete <id>`";
 
@@ -39,7 +39,7 @@ export async function taskHandler(
       : `❌ 删除失败，任务不存在: ${taskId}`;
   }
 
-  if (args.startsWith("toggle ")) {
+  if (args.trim().startsWith("toggle ")) {
     const taskId = args.slice(7).trim();
     if (!taskId) return "❌ 请提供任务ID\n\n用法: `/task toggle <id>`";
 
@@ -54,7 +54,7 @@ export async function taskHandler(
       : `❌ 操作失败`;
   }
 
-  if (args.startsWith("create ")) {
+  if (args.trim().startsWith("create ")) {
     const description = args.slice(7).trim();
     if (!description) return "❌ 请提供任务描述\n\n用法: `/task create <描述>`";
 
