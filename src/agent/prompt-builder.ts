@@ -203,6 +203,8 @@ export function buildHelpPrompt(runtime: AgentRuntime): string {
 /memory - 管理长期记忆
 /task - 定时任务管理
 /longtask - 耗时任务管理(支持进度报告、后台执行)
+/flowtask - 可靠任务流(结构化计划执行)
+/deploy - 部署Bot (patch/minor/major)
 /ver - 查看Bot版本信息
 
 **/longtask 详细说明：**
@@ -214,6 +216,23 @@ export function buildHelpPrompt(runtime: AgentRuntime): string {
 - 进度报告: 每30秒自动推送进度(步骤+文件+百分比)
 - 并发控制: 最多5个任务并行，超出自动排队
 - 历史记录: 任务完成后长期保存，可随时查看
+
+**/flowtask 详细说明：**
+- /flowtask run <描述> - 启动可靠任务流
+- /flowtask list - 查看任务列表
+- /flowtask status <id> - 查看任务进度
+- /flowtask plan <id> - 查看执行计划
+- /flowtask cancel <id> - 取消任务
+- /flowtask approve <id> - 确认继续执行
+- /flowtask reject <id> [原因] - 拒绝执行
+- 特点: 结构化计划 | 状态机执行 | 人机协作 | 自动回滚
+
+**/deploy 详细说明：**
+- /deploy 或 /deploy patch - 部署补丁版本
+- /deploy minor - 部署次版本
+- /deploy major - 部署主版本
+- 自动执行版本更新和PM2重启
+- 部署完成后会推送通知
 
 **当前角色:** ${template.name} ${template.icon}
 ${template.description}

@@ -90,6 +90,7 @@ const COMMANDS = {
   task: { desc: "定时任务管理 (list/create/delete/toggle)" },
   longtask: { desc: "耗时任务管理 (submit/status/list/cancel)" },
   flowtask: { desc: "可靠任务流 - 结构化计划执行 (run/status/list/cancel/approve)" },
+  deploy: { desc: "部署 Bot (patch/minor/major)" },
 };
 
 function parseCommand(text: string): { command: string; args: string } | null {
@@ -478,6 +479,32 @@ async function handleAgentCommand(
       return response;
     }
 
+    case "deploy": {
+      const { spawn } = await import("node:child_process");
+      
+      // 解析版本类型
+      const versionType = args.trim() || "patch";
+      if (!["patch", "minor", "major"].includes(versionType)) {
+        return `❌ 无效的版本类型: ${versionType}\n\n用法:\n- \`/deploy\` 或 \`/deploy patch\` - 补丁版本\n- \`/deploy minor\` - 次版本\n- \`/deploy major\` - 主版本`;
+      }
+      
+      // 获取项目路径
+      const projectPath = config.projectSpace?.path || process.cwd();
+      
+      // 异步执行部署
+      (async () => {
+        try {
+          const result = await executeDeploy(session.api, fromUser, contextToken, projectPath, versionType as "patch" | "minor" | "major");
+          await sendTextReply(session.api, fromUser, contextToken, result);
+        } catch (err) {
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          await sendTextReply(session.api, fromUser, contextToken, `❌ **部署失败**\n\n错误: ${errorMsg}`);
+        }
+      })();
+      
+      return `🚀 **开始部署**\n\n类型: ${versionType}\n路径: ${projectPath}\n\n部署正在进行中，完成后会通知您...`;
+    }
+
     case "flowtask": {
       const ftManager = getFlowTaskManager(config.id);
       
@@ -649,8 +676,9 @@ async function handleAgentCommand(
 /task - 定时任务管理 (list/create/delete/toggle)
 /longtask - 耗时任务管理 (submit/status/list/cancel)
 /flowtask - 可靠任务流 (run/status/list/cancel/approve)
+/deploy - 部署 Bot (patch/minor/major)
 
-直接发送消息可与AI对话。`;
+直接发送消息可与AI对话。`
   }
 }
 
@@ -1462,6 +1490,96 @@ async function pollMessages(session: AgentSession): Promise<void> {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+// ============ 部署功能 ============
+
+/**
+ * 执行部署命令
+ */
+async function executeDeploy(
+  api: ApiOptions,
+  userId: string,
+  contextToken: string,
+  projectPath: string,
+  versionType: "patch" | "minor" | "major"
+): Promise<string> {
+  const { spawn } = await import("node:child_process");
+  
+  return new Promise((resolve, reject) => {
+    const deployScript = `npm run deploy:${versionType}`;
+    console.log(`[Deploy] 开始执行: ${deployScript} in ${projectPath}`);
+    
+    const child = spawn("npm", ["run", `deploy:${versionType}`], {
+      cwd: projectPath,
+      stdio: ["ignore", "pipe", "pipe"],
+      shell: true,
+    });
+    
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    
+    child.stdout.on("data", (data: Buffer) => {
+      stdout.push(data);
+      const line = data.toString().trim();
+      if (line) {
+        console.log(`[Deploy] ${line}`);
+      }
+    });
+    
+    child.stderr.on("data", (data: Buffer) => {
+      stderr.push(data);
+      const line = data.toString().trim();
+      if (line) {
+        console.error(`[Deploy] ${line}`);
+      }
+    });
+    
+    // 设置5分钟超时
+    const timeoutId = setTimeout(() => {
+      child.kill("SIGTERM");
+      setTimeout(() => {
+        if (!child.killed) {
+          child.kill("SIGKILL");
+        }
+      }, 5000);
+      reject(new Error("部署超时（5分钟）"));
+    }, 5 * 60 * 1000);
+    
+    child.on("error", (err) => {
+      clearTimeout(timeoutId);
+      reject(new Error(`启动部署失败: ${err.message}`));
+    });
+    
+    child.on("close", (code) => {
+      clearTimeout(timeoutId);
+      
+      const output = Buffer.concat(stdout).toString("utf-8");
+      const errorOutput = Buffer.concat(stderr).toString("utf-8");
+      
+      if (code === 0) {
+        // 提取版本号
+        const versionMatch = output.match(/v?\d+\.\d+\.\d+/);
+        const version = versionMatch ? versionMatch[0] : "未知";
+        
+        // 生成简洁的部署报告
+        const lines = output.split("\n").filter(l => l.trim());
+        const lastLines = lines.slice(-10).join("\n");
+        
+        resolve(
+          `✅ **部署成功**\n\n` +
+          `版本: ${version}\n` +
+          `类型: ${versionType}\n` +
+          `时间: ${new Date().toLocaleString("zh-CN")}\n\n` +
+          `---\n` +
+          `*最近输出*:\n\`\`\`\n${lastLines.slice(0, 500)}${lastLines.length > 500 ? "\n..." : ""}\n\`\`\``
+        );
+      } else {
+        const errorMsg = errorOutput || output || `退出码: ${code}`;
+        reject(new Error(`部署失败: ${errorMsg.slice(0, 200)}`));
+      }
+    });
+  });
 }
 
 main().catch((err) => {
