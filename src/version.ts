@@ -10,7 +10,7 @@
 export const VERSION = {
   major: 0,
   minor: 6,
-  patch: 1,
+  patch: 2,
   
   /** 完整版本号 */
   get full(): string {
@@ -21,7 +21,7 @@ export const VERSION = {
   date: "2026-03-29",
   
   /** 版本说明 */
-  description: "重构任务分发模块，实现基于 LLM 的任务复杂度分析",
+  description: "wip: fix session mechanism alignment with Kimi Code CLI",
 };
 
 /** 提交哈希（由构建时注入） */
