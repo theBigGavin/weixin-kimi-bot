@@ -10,7 +10,7 @@
 export const VERSION = {
   major: 0,
   minor: 6,
-  patch: 6,
+  patch: 7,
   
   /** 完整版本号 */
   get full(): string {
@@ -21,7 +21,7 @@ export const VERSION = {
   date: "2026-03-29",
   
   /** 版本说明 */
-  description: "更新 longtask 进度跟踪文档和帮助说明",
+  description: "添加完整集成测试套件 (5个文件, 88个新测试)",
 };
 
 /** 提交哈希（由构建时注入） */
