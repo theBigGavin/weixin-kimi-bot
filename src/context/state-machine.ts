@@ -215,6 +215,26 @@ export class ConversationStateMachine {
           context.pendingDecision = undefined;
         },
       },
+      // 用户发送新执行意图，允许重新开始（放弃当前方案）
+      {
+        from: ConversationState.PROPOSING,
+        intent: IntentType.EXECUTE,
+        to: ConversationState.EXPLORING,
+        action: (intent, context) => {
+          // 清除待决策，重新开始探索
+          context.pendingDecision = undefined;
+          context.topic = intent.rawText || '';
+        },
+      },
+      // 未知意图也允许重新开始（用户可能切换了新话题）
+      {
+        from: ConversationState.PROPOSING,
+        intent: IntentType.UNKNOWN,
+        to: ConversationState.EXPLORING,
+        action: (intent, context) => {
+          context.pendingDecision = undefined;
+        },
+      },
 
       // ========== 从COMPARING状态 ==========
       {
@@ -495,11 +515,11 @@ export class ConversationStateMachine {
       case ConversationState.EXPLORING:
         return '我正在了解您的需求，请提供更多细节，或告诉我您的具体目标。';
       case ConversationState.PROPOSING:
-        return '当前正在提供方案，请选择其中一个方案（如"方案1"），或询问更多信息。';
+        return '💡 当前正在提供方案，您可以：\n• 选择方案（如"方案1"）\n• 询问更多信息\n• 直接描述新需求重新开始';
       case ConversationState.CONFIRMING:
         return '当前需要您的确认，请回复"确认"或"取消"。';
       case ConversationState.PLANNING:
-        return '📋 当前正在制定计划，您可以：\n• 回复 **确认** 开始执行\n• 回复 **修改** 调整计划\n• 或描述新的需求重新开始';
+        return '当前正在制定计划，您可以：\n• 回复 **确认** 开始执行\n• 回复 **修改** 调整计划\n• 或描述新的需求重新开始';
       case ConversationState.EXECUTING:
         return '当前正在执行任务，可以回复"暂停"或"取消"。';
       default:

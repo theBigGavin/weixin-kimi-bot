@@ -60,20 +60,32 @@ describe('ConversationStateMachine', () => {
   });
 
   describe('无效状态转移', () => {
-    it('PROPOSING状态不能EXECUTE', () => {
-      const result = stateMachine.transition(
-        { current: ConversationState.PROPOSING, topic: '' },
-        { type: IntentType.EXECUTE, confidence: 1, rawText: '', entities: [], references: [] }
-      );
-      expect(result.success).toBe(false);
-    });
-
     it('IDLE状态不能CONFIRM', () => {
       const result = stateMachine.transition(
         { current: ConversationState.IDLE, topic: '' },
         { type: IntentType.CONFIRM, confidence: 1, rawText: '', entities: [], references: [] }
       );
       expect(result.success).toBe(false);
+    });
+  });
+
+  describe('PROPOSING状态新需求处理', () => {
+    it('PROPOSING状态EXECUTE应该转移到EXPLORING（允许新需求）', () => {
+      const result = stateMachine.transition(
+        { current: ConversationState.PROPOSING, topic: '' },
+        { type: IntentType.EXECUTE, confidence: 1, rawText: '搜索新闻', entities: [], references: [] }
+      );
+      expect(result.success).toBe(true);
+      expect(result.newState).toBe(ConversationState.EXPLORING);
+    });
+
+    it('PROPOSING状态UNKNOWN应该转移到EXPLORING（允许新话题）', () => {
+      const result = stateMachine.transition(
+        { current: ConversationState.PROPOSING, topic: '' },
+        { type: IntentType.UNKNOWN, confidence: 1, rawText: '随便说点啥', entities: [], references: [] }
+      );
+      expect(result.success).toBe(true);
+      expect(result.newState).toBe(ConversationState.EXPLORING);
     });
   });
 
