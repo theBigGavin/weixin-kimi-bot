@@ -5,7 +5,7 @@
  */
 
 import { SessionContext } from './types.js';
-import { mkdir, writeFile, readFile, unlink } from 'fs/promises';
+import { mkdir, writeFile, readFile, unlink, rename } from 'fs/promises';
 import { join } from 'path';
 
 /**
@@ -56,24 +56,29 @@ export class ContextPersistence {
 
     // 原子写入：先写临时文件，再重命名
     const tempPath = `${path}.tmp`;
-    await writeFile(tempPath, JSON.stringify(serialized, null, 2), 'utf-8');
     
-    // 在Windows上，需要先删除目标文件才能重命名
     try {
-      await unlink(path);
-    } catch {
-      // 文件不存在，忽略错误
+      await writeFile(tempPath, JSON.stringify(serialized, null, 2), 'utf-8');
+      
+      // 在Windows上，需要先删除目标文件才能重命名
+      try {
+        await unlink(path);
+      } catch {
+        // 文件不存在，忽略错误
+      }
+      
+      // 重命名临时文件
+      await rename(tempPath, path);
+    } catch (err) {
+      // 如果原子写入失败，尝试直接写入（非原子，但更安全）
+      console.error(`[Context] 原子写入失败，回退到直接写入: ${context.agentId}:${context.userId}`, err);
+      try {
+        await writeFile(path, JSON.stringify(serialized, null, 2), 'utf-8');
+      } catch (fallbackErr) {
+        console.error(`[Context] 直接写入也失败: ${context.agentId}:${context.userId}`, fallbackErr);
+        throw fallbackErr;
+      }
     }
-    
-    // 重命名临时文件
-    await new Promise<void>((resolve, reject) => {
-      import('fs').then(fs => {
-        fs.rename(tempPath, path, (err) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
-    });
   }
 
   /**
