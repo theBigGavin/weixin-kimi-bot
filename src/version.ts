@@ -10,7 +10,7 @@
 export const VERSION = {
   major: 0,
   minor: 6,
-  patch: 2,
+  patch: 3,
   
   /** 完整版本号 */
   get full(): string {
@@ -21,7 +21,7 @@ export const VERSION = {
   date: "2026-03-29",
   
   /** 版本说明 */
-  description: "wip: fix session mechanism alignment with Kimi Code CLI",
+  description: "wip: 集成 Task Router 智能任务路由系统",
 };
 
 /** 提交哈希（由构建时注入） */
