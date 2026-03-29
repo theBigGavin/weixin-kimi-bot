@@ -27,7 +27,7 @@ import type {
   TaskSnapshot,
   RecoveredTask,
 } from "./types.js";
-import { parseProgress, parseCommandProgress, formatProgressMessage } from "./parser.js";
+import { parseProgress, parseCommandProgress, formatProgressMessage, extractFinalResult } from "./parser.js";
 import { TaskPersistenceManager } from "./persistence.js";
 import { TaskRecoveryManager, RecoveryResult, rebuildTaskFromSnapshot } from "./recovery.js";
 
@@ -379,7 +379,7 @@ export class LongTaskManager {
       });
     } else {
       // Kimi 任务
-      const args: string[] = ["--quiet"];
+      const args: string[] = ["--print", "--output-format", "stream-json"];
       if (task.model) {
         args.push("--model", task.model);
       }
@@ -464,10 +464,11 @@ export class LongTaskManager {
       if (code !== 0 && code !== null) {
         task.status = "failed";
         task.error = errorOutput || `进程退出码: ${code}`;
-        task.result = output;
+        task.result = isCommandTask ? output : extractFinalResult(output);
       } else {
         task.status = "completed";
-        task.result = output || errorOutput || "(无输出)";
+        const rawOutput = output || errorOutput || "(无输出)";
+        task.result = isCommandTask ? rawOutput : extractFinalResult(rawOutput);
       }
       
       task.completedAt = Date.now();
