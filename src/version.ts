@@ -10,7 +10,7 @@
 export const VERSION = {
   major: 0,
   minor: 6,
-  patch: 14,
+  patch: 15,
   
   /** 完整版本号 */
   get full(): string {
@@ -21,7 +21,7 @@ export const VERSION = {
   date: "2026-03-29",
   
   /** 版本说明 */
-  description: "添加基于LLM的意图识别，优先级高于正则模式",
+  description: "使用copyFile+unlink替代rename",
 };
 
 /** 提交哈希（由构建时注入） */
