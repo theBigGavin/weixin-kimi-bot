@@ -10,7 +10,7 @@
 export const VERSION = {
   major: 0,
   minor: 4,
-  patch: 8,
+  patch: 9,
   
   /** 完整版本号 */
   get full(): string {
@@ -21,7 +21,7 @@ export const VERSION = {
   date: "2026-03-29",
   
   /** 版本说明 */
-  description: "wip: 修复 deploy 命令部署完成通知问题",
+  description: "wip: 实现服务器重启通知功能",
 };
 
 /** 提交哈希（由构建时注入） */
