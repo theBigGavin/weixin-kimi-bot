@@ -31,6 +31,10 @@ export const DEFAULT_CONFIG: TaskRouterConfig = {
   defaultMode: 'direct',
   enableCache: true,
   cacheTtl: 5 * 60 * 1000, // 5分钟
+  useLLM: true,
+  llmAnalysisThreshold: 0.6,
+  llmModel: 'kimi-code/kimi-for-coding',
+  llmTimeout: 30000,
 };
 
 /** 决策因素权重 */

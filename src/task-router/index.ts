@@ -120,6 +120,12 @@ export interface TaskRouterOptions {
   onComplete?: (result: ExecutionResult) => Promise<void>;
   /** 人工确认回调（仅 FlowTask 使用） */
   onApprovalRequest?: (taskId: string, request: HumanApprovalRequest) => Promise<boolean>;
+  /** 是否启用 LLM 分析（覆盖配置中的 useLLM） */
+  useLLM?: boolean;
+  /** LLM 模型名称 */
+  llmModel?: string;
+  /** LLM 分析超时时间（毫秒） */
+  llmTimeout?: number;
 }
 
 /** 任务信息 */
@@ -150,11 +156,50 @@ export class TaskRouter {
   constructor(options: TaskRouterOptions) {
     this.agentId = options.agentId;
     this.options = options;
+
+    // 构建路由配置（包含 LLM 相关配置）
+    const routerConfig: Partial<TaskRouterConfig> = {
+      ...options.routerConfig,
+    };
     
+    // 如果提供了 LLM 相关选项，覆盖配置
+    if (options.useLLM !== undefined) {
+      routerConfig.useLLM = options.useLLM;
+    }
+    if (options.llmModel) {
+      routerConfig.llmModel = options.llmModel;
+    }
+    if (options.llmTimeout) {
+      routerConfig.llmTimeout = options.llmTimeout;
+    }
+
+    // 构建分析器选项
+    const analyzerOptions: AnalyzerOptions = {
+      ...options.analyzerOptions,
+    };
+    
+    // 同步 LLM 配置到分析器选项
+    if (options.useLLM !== undefined) {
+      analyzerOptions.useLLM = options.useLLM;
+    }
+    if (options.llmModel) {
+      analyzerOptions.llmOptions = {
+        ...analyzerOptions.llmOptions,
+        model: options.llmModel,
+      };
+    }
+    if (options.llmTimeout) {
+      analyzerOptions.llmTimeout = options.llmTimeout;
+      analyzerOptions.llmOptions = {
+        ...analyzerOptions.llmOptions,
+        timeout: options.llmTimeout,
+      };
+    }
+
     // 初始化分析器和决策引擎
-    this.analyzer = new TaskAnalyzer(options.routerConfig, options.analyzerOptions);
-    this.decisionEngine = new DecisionEngine({ ...DEFAULT_CONFIG, ...options.routerConfig });
-    
+    this.analyzer = new TaskAnalyzer(routerConfig, analyzerOptions);
+    this.decisionEngine = new DecisionEngine({ ...DEFAULT_CONFIG, ...routerConfig });
+
     // 初始化统计
     this.stats = {
       totalAnalyzed: 0,
@@ -515,6 +560,17 @@ export class TaskRouter {
   updateConfig(config: Partial<TaskRouterConfig>): void {
     this.analyzer.updateConfig(config);
     this.decisionEngine.updateConfig({ ...DEFAULT_CONFIG, ...config });
+    
+    // 同步更新选项中的 LLM 配置
+    if (config.useLLM !== undefined) {
+      this.options.useLLM = config.useLLM;
+    }
+    if (config.llmModel) {
+      this.options.llmModel = config.llmModel;
+    }
+    if (config.llmTimeout) {
+      this.options.llmTimeout = config.llmTimeout;
+    }
   }
 
   /**
@@ -605,6 +661,11 @@ export type {
 export { TaskAnalyzer } from './analyzer.js';
 export { DecisionEngine, DEFAULT_CONFIG } from './decision.js';
 export { ruleEngine, RuleEngine } from './rules.js';
+export { 
+  LLMTaskAnalyzer, 
+  type LLMAnalysisResult, 
+  type LLMAnalyzerOptions 
+} from './llm-analyzer.js';
 
 // 版本信息
-export const VERSION = '1.0.0';
+export const VERSION = '1.1.0';

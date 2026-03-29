@@ -72,8 +72,21 @@ async function runTests() {
   console.log(`涉及多文件: ${detailed.decision.analysis.involvesMultipleFiles}`);
   console.log(`置信度: ${Math.round(detailed.decision.confidence * 100)}%`);
   console.log(`使用深度分析: ${detailed.usedDeepAnalysis}`);
+  console.log(`使用 LLM: ${detailed.usedLLM}`);
+  console.log(`分析来源: ${detailed.analysisSource}`);
   console.log(`缓存命中: ${detailed.cacheHit}`);
   console.log(`决策理由: ${detailed.decision.reason}`);
+  
+  if (detailed.decision.analysis.llmReasoning) {
+    console.log(`LLM 推理: ${detailed.decision.analysis.llmReasoning}`);
+  }
+  
+  if (detailed.decision.analysis.suggestedSubtasks?.length) {
+    console.log(`建议子任务:`);
+    detailed.decision.analysis.suggestedSubtasks.forEach((subtask, i) => {
+      console.log(`  ${i + 1}. ${subtask}`);
+    });
+  }
   
   // 统计信息
   const stats = analyzer.getCacheStats();

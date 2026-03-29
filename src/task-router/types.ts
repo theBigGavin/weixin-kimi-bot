@@ -46,6 +46,12 @@ export interface TaskAnalysis {
   involvesMultipleFiles: boolean;
   /** 是否需要网络搜索 */
   requiresWebSearch: boolean;
+  /** LLM 分析推理过程 */
+  llmReasoning?: string;
+  /** 建议的子任务（用于拆分） */
+  suggestedSubtasks?: string[];
+  /** 分析来源 */
+  analysisSource: 'rule' | 'llm' | 'hybrid';
 }
 
 /** 执行决策 */
@@ -162,6 +168,14 @@ export interface TaskRouterConfig {
   enableCache: boolean;
   /** 缓存有效期（毫秒） */
   cacheTtl: number;
+  /** 是否启用 LLM 分析 */
+  useLLM: boolean;
+  /** LLM 分析触发阈值（置信度低于此值时触发） */
+  llmAnalysisThreshold: number;
+  /** LLM 模型名称 */
+  llmModel: string;
+  /** LLM 分析超时时间（毫秒） */
+  llmTimeout: number;
 }
 
 /** 分析缓存项 */
