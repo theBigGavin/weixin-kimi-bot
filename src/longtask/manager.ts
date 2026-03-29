@@ -209,13 +209,18 @@ export class LongTaskManager {
 
     // 进度报告定时器
     const reportTimer = setInterval(async () => {
-      turnEstimate++;
-      const combinedOutput = Buffer.concat(stdout).toString("utf-8") + "\n" + Buffer.concat(stderr).toString("utf-8");
-      const progress = parseProgress(combinedOutput, task.maxTurns, turnEstimate);
-      task.progressLogs.push(progress);
-      
-      if (task.status === "running") {
-        await this.options.onProgress(task, progress);
+      try {
+        turnEstimate++;
+        const combinedOutput = Buffer.concat(stdout).toString("utf-8") + "\n" + Buffer.concat(stderr).toString("utf-8");
+        const progress = parseProgress(combinedOutput, task.maxTurns, turnEstimate);
+        task.progressLogs.push(progress);
+        
+        if (task.status === "running") {
+          await this.options.onProgress(task, progress);
+        }
+      } catch (err) {
+        // 捕获异常，避免未处理的 Promise rejection 导致定时器停止
+        console.error(`[LongTask:${taskId}] 进度报告失败:`, err);
       }
     }, this.options.reportIntervalMs);
 
