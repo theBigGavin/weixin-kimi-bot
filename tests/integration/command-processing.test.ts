@@ -315,12 +315,28 @@ describe("命令处理集成测试", () => {
       expect(result).toMatch(/暂无耗时任务|耗时任务/);
     });
 
-    it("应该返回任务列表或提示当无参数时", async () => {
+    it("应该支持带前导空格的 list 子命令", async () => {
+      const ctx = createContext();
+      const result = await handleCommand("longtask", "  list", ctx);
+
+      // 即使用户输入 "  list"（带前导空格），也应该正确识别 list 子命令
+      expect(result).toMatch(/暂无耗时任务|耗时任务/);
+    });
+
+    it("应该返回用法信息当无参数时", async () => {
       const ctx = createContext();
       const result = await handleCommand("longtask", "", ctx);
 
-      // 当没有任务时，返回提示信息；有任务时返回任务列表
-      expect(result).toMatch(/暂无耗时任务|耗时任务/);
+      // 当没有参数时，返回用法信息
+      expect(result).toContain("耗时任务管理");
+    });
+
+    it("应该返回用法信息当只有空格时", async () => {
+      const ctx = createContext();
+      const result = await handleCommand("longtask", "   ", ctx);
+
+      // 当只有空格时，也返回用法信息
+      expect(result).toContain("耗时任务管理");
     });
   });
 
