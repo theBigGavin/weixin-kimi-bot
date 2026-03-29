@@ -48,7 +48,7 @@ interface AgentSession {
 /**
  * 消息处理器类型
  */
-type MessageHandler = (session: AgentSession, msg: WeixinMessage) => Promise<void>;
+export type MessageHandler = (session: AgentSession, msg: WeixinMessage) => Promise<void>;
 
 /**
  * 消息轮询循环

@@ -8,6 +8,7 @@ export type {
   CommandHandler,
   UserWorkspace,
   PendingTaskInfo,
+  PendingTask,
 } from "./types.js";
 
 export {
@@ -23,3 +24,7 @@ export {
   buildFounderPrompt,
   showTyping,
 } from "./message-utils.js";
+
+export { handleMessageWithContext } from "./message-handler.js";
+export { handleMessageLegacy } from "./legacy-handler.js";
+export { handleAgentCommandWithContext } from "./command-context.js";

@@ -5,6 +5,7 @@
 import type { ApiOptions } from "../ilink/api.js";
 import type { AgentRuntime, AgentConfig } from "../agent/types.js";
 import type { SessionContext } from "../context/types.js";
+import type { ParsedTaskInfo } from "../scheduler.js";
 
 /**
  * Agent会话
@@ -59,6 +60,17 @@ export interface PendingTaskInfo {
     command: string;
     description: string;
   };
+  agentId: string;
+  chatId: string;
+  contextToken: string;
+  expiresAt: number;
+}
+
+/**
+ * 待确认任务（完整类型）
+ */
+export interface PendingTask {
+  taskInfo: ParsedTaskInfo;
   agentId: string;
   chatId: string;
   contextToken: string;
