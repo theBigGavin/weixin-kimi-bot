@@ -4,13 +4,14 @@
  * 测试完整的对话流程
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
 import { SessionContextManager } from '../../src/context/session-context.js';
 import { ContextPersistence } from '../../src/context/persistence.js';
 import { ConversationStateMachine } from '../../src/context/state-machine.js';
 import { ReferenceResolver } from '../../src/context/reference-resolver.js';
 import { IntentResolver } from '../../src/context/intent-resolver.js';
 import { OutputParser } from '../../src/context/output-parser.js';
+import { llmIntentResolver } from '../../src/context/llm-intent-resolver.js';
 import { ConversationState, IntentType } from '../../src/context/types.js';
 
 describe('完整对话流程', () => {
@@ -19,6 +20,11 @@ describe('完整对话流程', () => {
   let referenceResolver: ReferenceResolver;
   let intentResolver: IntentResolver;
   let outputParser: OutputParser;
+
+  // 禁用LLM意图识别，使用正则模式
+  beforeAll(() => {
+    llmIntentResolver.updateOptions({ disabled: true });
+  });
 
   beforeEach(() => {
     const persistence = new ContextPersistence();

@@ -117,6 +117,11 @@ export class LLMIntentResolver {
    * @returns 识别结果
    */
   async identify(input: string, context: SessionContext): Promise<Intent> {
+    // 如果禁用LLM，直接抛出错误让上层使用fallback
+    if (this.options.disabled) {
+      throw new Error('LLM intent resolver is disabled');
+    }
+
     // 1. 先进行指代消解
     const resolution = this.referenceResolver.resolve(input, context);
     const resolvedInput = resolution.resolvedText;

@@ -4,7 +4,7 @@
  * 测试消息接收、处理和回复的完整流程
  */
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi, beforeAll } from "vitest";
 import type { WeixinMessage } from "../../src/ilink/types.js";
 import { MessageType } from "../../src/ilink/types.js";
 import { extractText, parseCommand } from "../../src/utils/index.js";
@@ -14,8 +14,14 @@ import {
   getStateMachine,
   ConversationState,
 } from "../../src/context/index.js";
+import { llmIntentResolver } from "../../src/context/llm-intent-resolver.js";
 import type { SessionContext } from "../../src/context/types.js";
 import { sendTextReply, getUserWorkspace } from "../../src/handlers/message-utils.js";
+
+// 禁用LLM意图识别，使用正则模式
+beforeAll(() => {
+  llmIntentResolver.updateOptions({ disabled: true });
+});
 
 describe("消息处理集成测试", () => {
   describe("消息解析", () => {

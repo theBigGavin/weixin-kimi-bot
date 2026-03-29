@@ -2,12 +2,18 @@
  * 意图识别器测试
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { IntentResolver } from '../../src/context/intent-resolver.js';
+import { llmIntentResolver } from '../../src/context/llm-intent-resolver.js';
 import { SessionContext, ConversationState, IntentType } from '../../src/context/types.js';
 
 describe('IntentResolver', () => {
   const resolver = new IntentResolver();
+
+  // 测试中禁用LLM，使用正则模式
+  beforeAll(() => {
+    llmIntentResolver.updateOptions({ disabled: true });
+  });
 
   function createTestContext(state: ConversationState = ConversationState.IDLE): SessionContext {
     return {

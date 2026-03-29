@@ -4,12 +4,18 @@
  * 测试系统在各种异常情况下的行为
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vitest";
 import type { WeixinMessage } from "../../src/ilink/types.js";
 import { MessageType } from "../../src/ilink/types.js";
 import { extractText, parseCommand, chunkMessage, MAX_MSG_LEN } from "../../src/utils/index.js";
 import { initializeContextSystem } from "../../src/context/index.js";
+import { llmIntentResolver } from "../../src/context/llm-intent-resolver.js";
 import { ConversationState } from "../../src/context/types.js";
+
+// 禁用LLM意图识别，使用正则模式
+beforeAll(() => {
+  llmIntentResolver.updateOptions({ disabled: true });
+});
 
 describe("错误恢复和边界情况集成测试", () => {
   describe("消息解析错误处理", () => {
