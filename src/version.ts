@@ -10,7 +10,7 @@
 export const VERSION = {
   major: 0,
   minor: 6,
-  patch: 8,
+  patch: 9,
   
   /** 完整版本号 */
   get full(): string {
@@ -21,7 +21,7 @@ export const VERSION = {
   date: "2026-03-29",
   
   /** 版本说明 */
-  description: "为 longtask 命令添加边界情况测试",
+  description: "修复其他命令的边界情况问题",
 };
 
 /** 提交哈希（由构建时注入） */
