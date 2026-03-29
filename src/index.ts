@@ -196,7 +196,7 @@ const COMMANDS = {
   prompt: { desc: "预览系统提示词" },
   ver: { desc: "查看 Bot 版本信息" },
   task: { desc: "定时任务管理 (list/create/delete/toggle)" },
-  longtask: { desc: "耗时任务管理 (submit/status/list/cancel)" },
+  longtask: { desc: "⏱️ 后台执行耗时任务，实时跟踪进度" },
   flowtask: { desc: "可靠任务流 - 结构化计划执行 (run/status/list/cancel/approve)" },
   deploy: { desc: "部署 Bot (patch/minor/major)" },
   route: { desc: "智能任务路由 (analyze/stats/auto)" },
@@ -606,7 +606,7 @@ ${kimiSession.exists ? `- ID: \`${kimiSession.sessionId?.slice(0, 16)}...\`
       // 提交新任务
       const prompt = args.trim();
       if (!prompt) {
-        return `**耗时任务管理**\n\n用法:\n- \`/longtask <任务描述>\` - 启动耗时任务\n- \`/longtask list\` - 查看任务列表\n- \`/longtask status <id>\` - 查看任务进度\n- \`/longtask cancel <id>\` - 取消任务`;
+        return `**⏱️ 耗时任务管理**\n\n在后台执行复杂任务，实时跟踪进度，不阻塞对话。\n\n用法:\n- \`/longtask <任务描述>\` - 启动耗时任务\n- \`/longtask list\` - 查看任务列表\n- \`/longtask status <id>\` - 查看任务进度\n- \`/longtask cancel <id>\` - 取消任务\n\n特点:\n• 每 30 秒自动推送进度报告\n• 基于工具调用实时计算进度百分比\n• 支持并发执行（最多 4 个）\n• 崩溃后可恢复未完成任务\n\n示例:\n\`/longtask 分析这个项目的所有代码文件\``;
       }
       
       // 获取用户工作目录
@@ -1038,7 +1038,7 @@ ${kimiSession.exists ? `- ID: \`${kimiSession.sessionId?.slice(0, 16)}...\`
 /memory - 查看记忆
 /ver - 版本信息
 /task - 定时任务管理 (list/create/delete/toggle)
-/longtask - 耗时任务管理 (submit/status/list/cancel)
+/longtask - 后台执行耗时任务，实时跟踪进度
 /flowtask - 可靠任务流 (run/status/list/cancel/approve)
 /route - 智能任务路由 (analyze/stats/auto)
 /auto - 开关自动路由 (on/off/status)

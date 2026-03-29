@@ -148,6 +148,9 @@ Verification URL: https://www.kimi.com/code/authorize_device?user_code=XXXX-XXXX
 | `/memory` | 查看长期记忆 |
 | `/prompt` | 预览当前系统提示词 |
 | `/task` | 定时任务管理（详见下方） |
+| `/longtask` | 后台执行耗时任务，实时跟踪进度 |
+| `/flowtask` | 可靠任务流 - 结构化计划执行 |
+| `/route` | 智能任务路由分析 |
 | `/ver` | 查看 Bot 版本信息 |
 
 #### 定时任务命令 `/task`
@@ -163,6 +166,54 @@ Verification URL: https://www.kimi.com/code/authorize_device?user_code=XXXX-XXXX
 | `example` | 添加示例任务 | `/task example` |
 
 详细文档：[SCHEDULER.md](./SCHEDULER.md)
+
+#### 耗时任务命令 `/longtask`
+
+适合执行需要几分钟甚至更长时间的任务，在后台运行不阻塞对话：
+
+| 子命令 | 说明 | 示例 |
+|--------|------|------|
+| `<描述>` | 提交新任务 | `/longtask 分析这个项目的所有代码文件` |
+| `list` | 查看任务列表 | `/longtask list` |
+| `status <id>` | 查看任务进度 | `/longtask status lt_xxx` |
+| `cancel <id>` | 取消任务 | `/longtask cancel lt_xxx` |
+
+**特点：**
+- ⚡ 后台执行，不阻塞正常对话
+- 📊 每 30 秒自动推送进度报告
+- 🎯 基于实际工具调用计算进度百分比
+- 🔄 支持并发执行（最多 4 个任务）
+- 💾 崩溃后可恢复未完成任务
+
+**使用示例：**
+
+```
+/longtask 重构 src/utils 目录下的所有工具函数
+```
+
+Bot 会回复：
+```
+🚀 耗时任务已提交
+
+ID: `lt_1743241234567_abc12`
+状态: 运行中
+
+每 30 秒会收到进度报告。
+使用 `/longtask status lt_1743241234567_abc12` 查看进度
+使用 `/longtask cancel lt_1743241234567_abc12` 取消任务
+```
+
+随后每 30 秒收到类似进度报告：
+```
+⏳ 耗时任务进度 `lt_1743241234567_abc12`
+
+██████████ 45%
+步骤: 修改文件
+文件: `src/utils/helper.ts`
+详情: 已完成 5/10 步
+
+_任务: 重构 src/utils 目录下的所有工具函数_
+```
 
 **使用示例：**
 
@@ -240,6 +291,18 @@ weixin-kimi-bot/
 │   │   ├── manager.ts       # Agent管理器
 │   │   ├── prompt-builder.ts # 提示词构建
 │   │   └── cli.ts           # Agent管理CLI
+│   ├── longtask/            # 耗时任务管理
+│   │   ├── manager.ts       # 任务管理器
+│   │   ├── parser.ts        # 进度解析器
+│   │   ├── tool-predictor.ts # 工具调用预测
+│   │   ├── persistence.ts   # 状态持久化
+│   │   └── recovery.ts      # 崩溃恢复
+│   ├── flowtask/            # 可靠任务流
+│   │   ├── manager.ts       # 任务流管理器
+│   │   └── worker.ts        # 工作进程
+│   ├── task-router/         # 智能任务路由
+│   │   ├── index.ts         # 路由主逻辑
+│   │   └── analyzer.ts      # 任务分析器
 │   ├── templates/           # 能力模板
 │   │   └── definitions.ts   # 预置角色模板
 │   ├── memory/              # 长期记忆系统
@@ -258,6 +321,9 @@ weixin-kimi-bot/
 ├── tsconfig.json
 ├── AGENTS.md                # 多Agent系统文档
 ├── SCHEDULER.md             # 定时任务文档
+├── LONGTASK.md              # 耗时任务文档
+├── FLOWTASK.md              # 可靠任务流文档
+├── ROUTER.md                # 智能路由文档
 └── NOTIFICATIONS.md         # 通知通道文档
 ```
 
@@ -275,6 +341,10 @@ weixin-kimi-bot/
 │   │   ├── sync-buf.txt        # 消息同步游标
 │   │   ├── context-tokens.json # 会话上下文
 │   │   ├── scheduled-tasks.json# 定时任务
+│   │   ├── longtask/           # 耗时任务数据
+│   │   │   ├── snapshots/      # 任务状态快照
+│   │   │   ├── history.jsonl   # 历史记录
+│   │   │   └── wal/            # WAL日志
 │   │   └── workspace/          # 工作目录
 │   └── agent_002/
 │       └── ...
