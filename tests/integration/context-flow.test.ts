@@ -123,10 +123,14 @@ AI驱动的股票筛选
     context = await contextManager.getOrCreate(userId, agentId);
     expect(context.state.current).toBe(ConversationState.PLANNING);
     expect(context.messages).toHaveLength(3);
+    
+    // 清理测试数据
+    await contextManager['persistence'].delete(userId, agentId);
   });
 
   it('应该支持多轮对话和状态保持', async () => {
-    const userId = 'test-user-2';
+    // 使用唯一ID避免测试间污染
+    const userId = 'test-user-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
     const agentId = 'test-agent';
 
     // 第一轮
@@ -139,5 +143,8 @@ AI驱动的股票筛选
     context = await contextManager.getOrCreate(userId, agentId);
     expect(context.messages).toHaveLength(2);
     expect(context.state.current).toBe(ConversationState.EXPLORING);
+    
+    // 清理测试数据
+    await contextManager['persistence'].delete(userId, agentId);
   });
 });
