@@ -11,7 +11,30 @@ export async function longTaskHandler(args: string, context: CommandContext): Pr
   const { session, fromUser, contextToken } = context;
   const ltManager = await getLongTaskManager(session.config.id);
 
-  if (args === "list" || args === "") {
+  // 显示用法信息（当无参数或只有空格时）
+  const prompt = args.trim();
+  if (!prompt) {
+    return `**⏱️ 耗时任务管理**
+
+在后台执行复杂任务，实时跟踪进度，不阻塞对话。
+
+用法:
+- \`/longtask <任务描述>\` - 启动耗时任务
+- \`/longtask list\` - 查看任务列表
+- \`/longtask status <id>\` - 查看任务进度
+- \`/longtask cancel <id>\` - 取消任务
+
+特点:
+• 每 ${ltManager.getReportIntervalSec()} 秒自动推送进度报告
+• 基于工具调用实时计算进度百分比
+• 支持并发执行（最多 4 个）
+• 崩溃后可恢复未完成任务
+
+示例:
+\`/longtask 分析这个项目的所有代码文件\``;
+  }
+
+  if (args === "list") {
     const tasks = ltManager.getUserTasks(fromUser);
     const historyRes = await ltManager.queryHistory({ userId: fromUser }, 10);
     const history = historyRes.items;
@@ -63,11 +86,6 @@ export async function longTaskHandler(args: string, context: CommandContext): Pr
     return success
       ? `🚫 已取消任务: ${taskId}`
       : `❌ 取消失败，任务不存在或已完成: ${taskId}`;
-  }
-
-  const prompt = args.trim();
-  if (!prompt) {
-    return `**⏱️ 耗时任务管理**\n\n在后台执行复杂任务，实时跟踪进度，不阻塞对话。\n\n用法:\n- \`/longtask <任务描述>\` - 启动耗时任务\n- \`/longtask list\` - 查看任务列表\n- \`/longtask status <id>\` - 查看任务进度\n- \`/longtask cancel <id>\` - 取消任务\n\n特点:\n• 每 30 秒自动推送进度报告\n• 基于工具调用实时计算进度百分比\n• 支持并发执行（最多 4 个）\n• 崩溃后可恢复未完成任务\n\n示例:\n\`/longtask 分析这个项目的所有代码文件\``;
   }
 
   const userWorkspace = await getUserWorkspace(session, fromUser);
