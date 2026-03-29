@@ -267,6 +267,12 @@ export class ConversationStateMachine {
         intent: IntentType.REJECT,
         to: ConversationState.REFINING,
       },
+      // 未知意图允许重新开始探索（用户可能切换了新话题）
+      {
+        from: ConversationState.PLANNING,
+        intent: IntentType.UNKNOWN,
+        to: ConversationState.EXPLORING,
+      },
 
       // ========== 从EXECUTING状态 ==========
       {
@@ -436,7 +442,7 @@ export class ConversationStateMachine {
       case ConversationState.CONFIRMING:
         return '当前需要您的确认，请回复"确认"或"取消"。';
       case ConversationState.PLANNING:
-        return '当前正在制定计划，请确认计划或提出修改意见。';
+        return '📋 当前正在制定计划，您可以：\n• 回复 **确认** 开始执行\n• 回复 **修改** 调整计划\n• 或描述新的需求重新开始';
       case ConversationState.EXECUTING:
         return '当前正在执行任务，可以回复"暂停"或"取消"。';
       default:
