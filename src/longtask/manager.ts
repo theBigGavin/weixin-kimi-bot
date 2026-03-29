@@ -1,18 +1,35 @@
 /**
- * 耗时任务管理器
+ * 耗时任务管理器 v2
  * 
- * 负责：
+ * 增强功能：
  * - 任务队列管理
  * - 并发控制
  * - 进度跟踪与报告
  * - 历史记录持久化
+ * - 实时状态快照
+ * - 崩溃恢复机制
+ * - WAL数据一致性保证
+ * - 数据压缩与轮转
  */
 import { spawn } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync, appendFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import type { LongTask, LongTaskStatus, ProgressInfo, LongTaskHistoryRecord, LongTaskManagerOptions } from "./types.js";
+import type {
+  LongTask,
+  LongTaskStatus,
+  ProgressInfo,
+  LongTaskHistoryRecord,
+  LongTaskManagerOptions,
+  PersistenceOptions,
+  HistoryQueryFilter,
+  QueryResult,
+  TaskSnapshot,
+  RecoveredTask,
+} from "./types.js";
 import { parseProgress, formatProgressMessage } from "./parser.js";
+import { TaskPersistenceManager } from "./persistence.js";
+import { TaskRecoveryManager, RecoveryResult, rebuildTaskFromSnapshot } from "./recovery.js";
 
 export class LongTaskManager {
   private tasks: Map<string, LongTask> = new Map();
@@ -20,23 +37,83 @@ export class LongTaskManager {
   private runningCount = 0;
   private options: LongTaskManagerOptions;
   private reportTimers: Map<string, NodeJS.Timeout> = new Map();
-  private historyFile: string;
+  private dataDir: string;
+  private persistence: TaskPersistenceManager;
+  private recovery: TaskRecoveryManager;
+  private initialized = false;
 
   constructor(agentId: string, options: Partial<LongTaskManagerOptions> = {}) {
-    const baseDir = join(process.env.HOME || "/tmp", ".weixin-kimi-bot", "agents", agentId);
-    this.historyFile = join(baseDir, "longtask-history.jsonl");
+    this.dataDir = join(process.env.HOME || "/tmp", ".weixin-kimi-bot", "agents", agentId, "longtask");
     
     // 确保目录存在
-    mkdir(baseDir, { recursive: true }).catch(() => {});
+    mkdir(this.dataDir, { recursive: true }).catch(() => {});
 
     this.options = {
-      maxConcurrency: 5,
+      maxConcurrency: 4,
       reportIntervalMs: 30_000,
       onProgress: async () => {},
       onComplete: async () => {},
       onCancel: async () => {},
+      persistence: {
+        strategy: "jsonl",
+        snapshotIntervalMs: 30_000,
+        enableWAL: true,
+        historyRetentionDays: 30,
+        enableCompression: true,
+        maxFileSizeMB: 100,
+        enableRecovery: true,
+      },
       ...options,
     };
+
+    // 初始化持久化管理器
+    this.persistence = new TaskPersistenceManager(
+      agentId,
+      this.dataDir,
+      this.options.persistence
+    );
+
+    // 初始化恢复管理器
+    this.recovery = new TaskRecoveryManager({
+      autoRestart: false,
+      notifyOnRecovery: true,
+      onRecovered: async (result) => {
+        console.log(`[LongTask] 任务恢复: ${result.taskId} - ${result.action}`);
+      },
+    });
+  }
+
+  /**
+   * 初始化管理器（包含崩溃恢复）
+   */
+  async initialize(): Promise<void> {
+    if (this.initialized) return;
+
+    // 初始化持久化层
+    await this.persistence.initialize();
+
+    // 执行崩溃恢复
+    if (this.options.persistence?.enableRecovery !== false) {
+      await this.performRecovery();
+    }
+
+    this.initialized = true;
+    console.log(`[LongTaskManager] 初始化完成，数据目录: ${this.dataDir}`);
+  }
+
+  /**
+   * 关闭管理器
+   */
+  async close(): Promise<void> {
+    // 停止所有定时器
+    for (const [taskId, timer] of this.reportTimers.entries()) {
+      clearInterval(timer);
+      this.reportTimers.delete(taskId);
+    }
+
+    // 关闭持久化管理器
+    await this.persistence.close();
+    this.initialized = false;
   }
 
   /**
@@ -58,6 +135,11 @@ export class LongTaskManager {
 
     this.tasks.set(id, fullTask);
 
+    // 保存快照
+    this.persistence.saveSnapshot(fullTask).catch(err => {
+      console.error(`[LongTask] 保存快照失败:`, err);
+    });
+
     if (this.runningCount < this.options.maxConcurrency) {
       this.startTask(id);
     } else {
@@ -67,6 +149,8 @@ export class LongTaskManager {
         percent: 0,
         timestamp: Date.now(),
       });
+      // 保存排队状态
+      this.persistence.saveSnapshot(fullTask).catch(() => {});
     }
 
     return fullTask;
@@ -91,7 +175,7 @@ export class LongTaskManager {
         timestamp: Date.now(),
       });
       await this.options.onCancel(task);
-      this.saveToHistory(task);
+      await this.finalizeTask(task);
       return true;
     }
 
@@ -120,7 +204,7 @@ export class LongTaskManager {
       this.clearReportTimer(taskId);
       this.runningCount--;
       await this.options.onCancel(task);
-      this.saveToHistory(task);
+      await this.finalizeTask(task);
       this.processQueue();
       return true;
     }
@@ -141,6 +225,15 @@ export class LongTaskManager {
   getUserTasks(userId: string): LongTask[] {
     return Array.from(this.tasks.values())
       .filter(t => t.userId === userId)
+      .sort((a, b) => b.createdAt - a.createdAt);
+  }
+
+  /**
+   * 获取所有活跃任务
+   */
+  getActiveTasks(): LongTask[] {
+    return Array.from(this.tasks.values())
+      .filter(t => t.status === "running" || t.status === "pending")
       .sort((a, b) => b.createdAt - a.createdAt);
   }
 
@@ -166,6 +259,92 @@ export class LongTaskManager {
   }
 
   /**
+   * 查询历史记录
+   */
+  async queryHistory(
+    filter?: HistoryQueryFilter,
+    limit?: number,
+    cursor?: string
+  ): Promise<QueryResult<LongTaskHistoryRecord>> {
+    return this.persistence.queryHistory(filter, limit, cursor);
+  }
+
+  /**
+   * 获取持久化元数据
+   */
+  async getPersistenceMetadata() {
+    return this.persistence.getMetadata();
+  }
+
+  /**
+   * 执行数据维护
+   */
+  async performMaintenance(): Promise<void> {
+    return this.persistence.performMaintenance();
+  }
+
+  /**
+   * 获取恢复报告（如果有未恢复的任务）
+   */
+  async getRecoveryReport(): Promise<string | null> {
+    const snapshots = await this.persistence.loadActiveSnapshots();
+    if (snapshots.length === 0) return null;
+
+    const recoveredTasks = await this.recovery.analyzeRecoverableTasks(snapshots);
+    const results: RecoveryResult[] = recoveredTasks.map(t => ({
+      success: true,
+      action: t.recoverySuggestion,
+      taskId: t.task.id,
+      message: t.recoveryReason,
+    }));
+
+    return this.recovery.buildRecoveryReport(results);
+  }
+
+  // ==================== 私有方法 ====================
+
+  /**
+   * 执行崩溃恢复
+   */
+  private async performRecovery(): Promise<void> {
+    try {
+      const snapshots = await this.persistence.loadActiveSnapshots();
+      if (snapshots.length === 0) return;
+
+      console.log(`[LongTaskManager] 发现 ${snapshots.length} 个未完成任务，执行恢复...`);
+
+      const recoveredTasks = await this.recovery.analyzeRecoverableTasks(snapshots);
+
+      // 恢复任务到内存
+      for (const { task, recoverySuggestion } of recoveredTasks) {
+        if (recoverySuggestion === "restart" || recoverySuggestion === "resume") {
+          const fullTask = rebuildTaskFromSnapshot(task);
+          this.tasks.set(fullTask.id, fullTask);
+
+          if (task.status === "pending") {
+            this.queue.push(fullTask.id);
+          } else if (task.status === "running") {
+            // 如果进程已死，标记为失败
+            if (task.childPid && !(await this.recovery.isProcessAlive(task.childPid))) {
+              fullTask.status = "failed";
+              fullTask.error = "进程在系统重启后丢失";
+              fullTask.completedAt = Date.now();
+              await this.finalizeTask(fullTask);
+            }
+          }
+        }
+      }
+
+      // 重新处理队列
+      this.processQueue();
+
+      console.log(`[LongTaskManager] 恢复完成，恢复了 ${this.tasks.size} 个任务`);
+    } catch (error) {
+      console.error(`[LongTaskManager] 恢复失败:`, error);
+    }
+  }
+
+  /**
    * 启动任务
    */
   private startTask(taskId: string): void {
@@ -180,6 +359,9 @@ export class LongTaskManager {
       timestamp: Date.now(),
     });
     this.runningCount++;
+
+    // 保存快照
+    this.persistence.saveSnapshot(task).catch(() => {});
 
     // 构建 Kimi 参数
     const args: string[] = ["--quiet"];
@@ -215,6 +397,9 @@ export class LongTaskManager {
         const progress = parseProgress(combinedOutput, task.maxTurns, turnEstimate);
         task.progressLogs.push(progress);
         
+        // 保存进度快照
+        await this.persistence.saveSnapshot(task);
+        
         if (task.status === "running") {
           await this.options.onProgress(task, progress);
         }
@@ -241,7 +426,7 @@ export class LongTaskManager {
       task.completedAt = Date.now();
       this.runningCount--;
       await this.options.onComplete(task);
-      this.saveToHistory(task);
+      await this.finalizeTask(task);
       this.processQueue();
     });
 
@@ -275,7 +460,7 @@ export class LongTaskManager {
       
       this.runningCount--;
       await this.options.onComplete(task);
-      this.saveToHistory(task);
+      await this.finalizeTask(task);
       this.processQueue();
     });
   }
@@ -309,10 +494,11 @@ export class LongTaskManager {
   }
 
   /**
-   * 保存任务到历史记录
+   * 完成任务处理（保存历史记录和清理）
    */
-  private saveToHistory(task: LongTask): void {
+  private async finalizeTask(task: LongTask): Promise<void> {
     try {
+      // 构建历史记录
       const record: LongTaskHistoryRecord = {
         id: task.id,
         agentId: task.agentId,
@@ -330,26 +516,17 @@ export class LongTaskManager {
           timestamp: Date.now(),
         },
       };
-      appendFileSync(this.historyFile, JSON.stringify(record) + "\n");
-    } catch (e) {
-      console.error(`[LongTask] 保存历史记录失败:`, e);
-    }
-  }
 
-  /**
-   * 读取历史记录
-   */
-  loadHistory(limit: number = 100): LongTaskHistoryRecord[] {
-    try {
-      if (!existsSync(this.historyFile)) return [];
-      const lines = readFileSync(this.historyFile, "utf-8")
-        .split("\n")
-        .filter(line => line.trim())
-        .slice(-limit);
-      return lines.map(line => JSON.parse(line) as LongTaskHistoryRecord);
+      // 保存到历史记录
+      await this.persistence.saveHistory(record);
+
+      // 删除任务快照
+      await this.persistence.deleteSnapshot(task.id);
+
+      // 从内存中移除（可选，根据需求可以保留）
+      // this.tasks.delete(task.id);
     } catch (e) {
-      console.error(`[LongTask] 加载历史记录失败:`, e);
-      return [];
+      console.error(`[LongTask] 完成任务处理失败:`, e);
     }
   }
 }
@@ -357,9 +534,27 @@ export class LongTaskManager {
 // 全局管理器缓存：agentId -> LongTaskManager
 const managers: Map<string, LongTaskManager> = new Map();
 
-export function getLongTaskManager(agentId: string, options?: Partial<LongTaskManagerOptions>): LongTaskManager {
+export async function getLongTaskManager(
+  agentId: string,
+  options?: Partial<LongTaskManagerOptions>
+): Promise<LongTaskManager> {
   if (!managers.has(agentId)) {
-    managers.set(agentId, new LongTaskManager(agentId, options));
+    const manager = new LongTaskManager(agentId, options);
+    await manager.initialize();
+    managers.set(agentId, manager);
+  }
+  return managers.get(agentId)!;
+}
+
+// 兼容旧版同步接口（首次调用需要初始化）
+export function getLongTaskManagerSync(agentId: string, options?: Partial<LongTaskManagerOptions>): LongTaskManager {
+  if (!managers.has(agentId)) {
+    const manager = new LongTaskManager(agentId, options);
+    // 异步初始化
+    manager.initialize().catch(err => {
+      console.error(`[LongTaskManager] 初始化失败:`, err);
+    });
+    managers.set(agentId, manager);
   }
   return managers.get(agentId)!;
 }

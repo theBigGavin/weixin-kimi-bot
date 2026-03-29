@@ -380,12 +380,13 @@ async function handleAgentCommand(
     }
 
     case "longtask": {
-      const ltManager = getLongTaskManager(config.id);
+      const ltManager = await getLongTaskManager(config.id);
       
       // 列出任务
       if (args === "list" || args === "") {
         const tasks = ltManager.getUserTasks(fromUser);
-        const history = ltManager.loadHistory(10);
+        const historyRes = await ltManager.queryHistory({ userId: fromUser }, 10);
+        const history = historyRes.items;
         
         if (tasks.length === 0 && history.length === 0) {
           return "📋 暂无耗时任务\n\n使用 `/longtask <任务描述>` 启动一个耗时任务";
@@ -979,7 +980,7 @@ async function handleMessage(
   // ========== 自动识别耗时任务 ==========
   if (isLikelyLongTask(text)) {
     console.log(`  ⏱️ 自动识别为耗时任务`);
-    const ltManager = getLongTaskManager(session.config.id);
+    const ltManager = await getLongTaskManager(session.config.id);
     const task = ltManager.submit({
       agentId: session.config.id,
       userId: fromUser,
@@ -1031,7 +1032,7 @@ async function handleMessage(
   // 自动识别耗时任务
   if (isLikelyLongTask(text)) {
     console.log(`  ⏱️ 自动识别为耗时任务`);
-    const ltManager = getLongTaskManager(session.config.id);
+    const ltManager = await getLongTaskManager(session.config.id);
     const task = ltManager.submit({
       agentId: session.config.id,
       userId: fromUser,
