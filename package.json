@@ -6,6 +6,8 @@
   "private": true,
   "scripts": {
     "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "start": "node --import tsx src/index.ts",
     "login": "node --import tsx src/login.ts",
     "config": "node --import tsx src/config.ts",

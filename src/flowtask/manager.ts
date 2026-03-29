@@ -1,8 +1,12 @@
 /**
- * FlowTask 管理器
+ * FlowTask 管理器 - V2
  * 
- * 整合计划生成、状态机执行、人机协作确认
- * 提供任务队列管理、进度报告、历史记录等功能
+ * 整合以下能力：
+ * 1. LongTask 的后台长时间执行能力（子进程执行，不受HTTP超时限制）
+ * 2. 自动任务拆分（方案2）：大任务自动拆分为小任务
+ * 3. 结构化计划 + 状态机执行
+ * 4. 人机协作确认点
+ * 5. 完整审计追踪
  */
 
 import { mkdir } from "node:fs/promises";
@@ -21,9 +25,24 @@ import type {
 } from "./types.js";
 import { generatePlan, formatPlanForDisplay } from "./plan-generator.js";
 import { createExecutionEngine, ExecutionEngine } from "./state-machine.js";
+import { createBackgroundExecutor, FlowTaskBackgroundExecutor } from "./background-executor.js";
+import { 
+  createTaskSplitter, 
+  createResultMerger, 
+  TaskSplitter, 
+  ResultMerger,
+  SubTask,
+  SubTaskResult,
+  SplitTaskGroup
+} from "./task-splitter.js";
 
 /**
- * FlowTask 管理器类
+ * 执行模式
+ */
+type ExecutionMode = "inline" | "background";
+
+/**
+ * FlowTask 管理器类 V2
  */
 export class FlowTaskManager {
   private tasks: Map<string, FlowTask> = new Map();
@@ -33,8 +52,17 @@ export class FlowTaskManager {
   private historyFile: string;
   private approvalCallbacks: Map<string, (response: HumanApprovalResponse) => void> = new Map();
   private activeEngines: Map<string, ExecutionEngine> = new Map();
+  private backgroundExecutors: Map<string, FlowTaskBackgroundExecutor> = new Map();
+  private taskSplitter: TaskSplitter;
+  private resultMerger: ResultMerger;
+  private agentId: string;
+  
+  // 子任务管理
+  private subTaskResults: Map<string, Map<string, SubTaskResult>> = new Map();
+  private activeSubTasks: Map<string, string[]> = new Map();
 
   constructor(agentId: string, options: Partial<FlowTaskManagerOptions> = {}) {
+    this.agentId = agentId;
     const baseDir = join(homedir(), ".weixin-kimi-bot", "agents", agentId);
     this.historyFile = join(baseDir, "flowtask-history.jsonl");
     
@@ -53,6 +81,14 @@ export class FlowTaskManager {
       requireApprovalFor: ["write", "shell", "human"],
       ...options,
     };
+
+    // 初始化任务拆分器和结果合并器
+    this.taskSplitter = createTaskSplitter({
+      maxStepsPerTask: 10,
+      enableParallel: true,
+      splitBy: "auto",
+    });
+    this.resultMerger = createResultMerger();
   }
 
   /**
@@ -61,11 +97,12 @@ export class FlowTaskManager {
    * 流程：
    * 1. 创建任务
    * 2. 生成计划
-   * 3. 验证计划
+   * 3. 分析是否需要拆分
    * 4. 进入队列或开始执行
    */
   async submit(
-    taskInput: Omit<FlowTask, "id" | "status" | "createdAt" | "progressLogs" | "plan" | "execution">
+    taskInput: Omit<FlowTask, "id" | "status" | "createdAt" | "progressLogs" | "plan" | "execution">,
+    executionMode: ExecutionMode = "background" // 默认使用后台执行
   ): Promise<FlowTask> {
     const id = `ft_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     
@@ -86,7 +123,7 @@ export class FlowTaskManager {
     this.tasks.set(id, task);
     
     // 开始生成计划
-    this.startPlanning(task);
+    this.startPlanning(task, executionMode);
     
     return task;
   }
@@ -94,7 +131,7 @@ export class FlowTaskManager {
   /**
    * 开始计划生成阶段
    */
-  private async startPlanning(task: FlowTask): Promise<void> {
+  private async startPlanning(task: FlowTask, executionMode: ExecutionMode): Promise<void> {
     task.status = "planning";
     task.progressLogs.push({
       step: "生成执行计划",
@@ -140,9 +177,26 @@ export class FlowTaskManager {
         detail: `风险等级: ${result.plan.validation.riskLevel}`,
       });
 
+      // 检查是否需要拆分任务（方案2）
+      const splitAnalysis = this.taskSplitter.analyze(result.plan);
+      
+      if (splitAnalysis.shouldSplit && splitAnalysis.splitGroup) {
+        task.progressLogs.push({
+          step: `任务已拆分: ${splitAnalysis.reason}`,
+          stepNumber: 0,
+          totalSteps: splitAnalysis.splitGroup.subTasks.length,
+          percent: 15,
+          timestamp: Date.now(),
+        });
+        
+        // 处理拆分后的子任务
+        await this.handleSplitTask(task, splitAnalysis.splitGroup, executionMode);
+        return;
+      }
+
       // 检查并发限制
       if (this.runningCount < this.options.maxConcurrency) {
-        await this.startExecution(task);
+        await this.startExecution(task, executionMode);
       } else {
         this.queue.push(task.id);
         task.status = "pending";
@@ -164,15 +218,285 @@ export class FlowTaskManager {
   }
 
   /**
+   * 处理拆分后的任务组
+   */
+  private async handleSplitTask(
+    task: FlowTask, 
+    splitGroup: SplitTaskGroup,
+    executionMode: ExecutionMode
+  ): Promise<void> {
+    // 初始化子任务结果存储
+    this.subTaskResults.set(task.id, new Map());
+    this.activeSubTasks.set(task.id, []);
+
+    task.status = "running";
+    task.startedAt = Date.now();
+    this.runningCount++;
+
+    const subTasks = splitGroup.subTasks;
+    
+    // 按并行组执行
+    for (let groupIndex = 0; groupIndex < splitGroup.parallelGroups.length; groupIndex++) {
+      const group = splitGroup.parallelGroups[groupIndex];
+      
+      task.progressLogs.push({
+        step: `执行并行组 ${groupIndex + 1}/${splitGroup.parallelGroups.length} (${group.length} 个子任务)`,
+        stepNumber: groupIndex + 1,
+        totalSteps: splitGroup.parallelGroups.length,
+        percent: Math.round((groupIndex / splitGroup.parallelGroups.length) * 100),
+        timestamp: Date.now(),
+      });
+
+      // 并行执行当前组的子任务
+      const promises = group.map(subTaskId => {
+        const subTask = subTasks.find(st => st.id === subTaskId)!;
+        return this.executeSubTask(task, subTask, splitGroup, executionMode);
+      });
+
+      await Promise.all(promises);
+    }
+
+    // 合并结果
+    const results = Array.from(this.subTaskResults.get(task.id)!.values());
+    const mergedResult = this.resultMerger.merge(results, splitGroup.mergeStrategy, splitGroup.originalGoal);
+
+    // 检查是否有失败
+    const hasFailed = results.some(r => r.status === "failed");
+    const allCancelled = results.every(r => r.status === "cancelled");
+
+    if (allCancelled) {
+      task.status = "cancelled";
+      task.error = "所有子任务被取消";
+    } else if (hasFailed) {
+      task.status = "completed"; // 部分完成
+      task.result = mergedResult + "\n\n*注意：部分子任务执行失败*";
+    } else {
+      task.status = "completed";
+      task.result = mergedResult;
+    }
+
+    task.completedAt = Date.now();
+    task.progressLogs.push({
+      step: "所有子任务完成",
+      stepNumber: splitGroup.parallelGroups.length,
+      totalSteps: splitGroup.parallelGroups.length,
+      percent: 100,
+      timestamp: Date.now(),
+    });
+
+    this.runningCount--;
+    await this.options.onComplete(task);
+    this.saveToHistory(task);
+    this.processQueue();
+
+    // 清理
+    this.subTaskResults.delete(task.id);
+    this.activeSubTasks.delete(task.id);
+  }
+
+  /**
+   * 执行单个子任务
+   */
+  private async executeSubTask(
+    parentTask: FlowTask,
+    subTask: SubTask,
+    splitGroup: SplitTaskGroup,
+    executionMode: ExecutionMode
+  ): Promise<void> {
+    const subTaskResult: SubTaskResult = {
+      subTaskId: subTask.id,
+      status: "running",
+      startedAt: Date.now(),
+      progressLogs: [],
+    };
+
+    this.subTaskResults.get(parentTask.id)!.set(subTask.id, subTaskResult);
+    this.activeSubTasks.get(parentTask.id)!.push(subTask.id);
+
+    try {
+      // 将子任务转换为计划
+      const subPlan = this.taskSplitter.convertSubTaskToPlan(subTask, parentTask.plan!);
+
+      if (executionMode === "background") {
+        // 使用后台执行
+        await this.executeSubTaskInBackground(parentTask, subTask, subPlan, subTaskResult);
+      } else {
+        // 使用内联执行
+        await this.executeSubTaskInline(parentTask, subTask, subPlan, subTaskResult);
+      }
+
+    } catch (error) {
+      subTaskResult.status = "failed";
+      subTaskResult.error = error instanceof Error ? error.message : String(error);
+      subTaskResult.completedAt = Date.now();
+      this.subTaskResults.get(parentTask.id)!.set(subTask.id, subTaskResult);
+    }
+  }
+
+  /**
+   * 在后台执行子任务
+   */
+  private async executeSubTaskInBackground(
+    parentTask: FlowTask,
+    subTask: SubTask,
+    subPlan: ValidatedPlan,
+    result: SubTaskResult
+  ): Promise<void> {
+    const executor = createBackgroundExecutor(this.agentId, `${parentTask.id}-${subTask.id}`);
+    this.backgroundExecutors.set(`${parentTask.id}-${subTask.id}`, executor);
+
+    return new Promise((resolve, reject) => {
+      executor.execute({
+        task: {
+          ...parentTask,
+          id: `${parentTask.id}-${subTask.id}`,
+          prompt: subTask.goal,
+        },
+        plan: subPlan,
+        model: parentTask.model,
+        systemPrompt: parentTask.systemPrompt,
+        onProgress: (progress) => {
+          // 合并子任务进度到父任务
+          parentTask.progressLogs.push({
+            ...progress,
+            step: `[${subTask.name}] ${progress.step}`,
+          });
+          this.options.onProgress(parentTask, progress);
+        },
+        onComplete: (execResult) => {
+          result.status = execResult.status;
+          result.result = execResult.result;
+          result.error = execResult.error;
+          result.progressLogs = execResult.progressLogs;
+          result.completedAt = Date.now();
+          this.backgroundExecutors.delete(`${parentTask.id}-${subTask.id}`);
+          resolve();
+        },
+        onError: (error) => {
+          result.status = "failed";
+          result.error = error;
+          result.completedAt = Date.now();
+          this.backgroundExecutors.delete(`${parentTask.id}-${subTask.id}`);
+          reject(new Error(error));
+        },
+      }).catch(reject);
+    });
+  }
+
+  /**
+   * 内联执行子任务
+   */
+  private async executeSubTaskInline(
+    parentTask: FlowTask,
+    subTask: SubTask,
+    subPlan: ValidatedPlan,
+    result: SubTaskResult
+  ): Promise<void> {
+    // 创建临时任务对象
+    const tempTask: FlowTask = {
+      ...parentTask,
+      id: `${parentTask.id}-${subTask.id}`,
+      prompt: subTask.goal,
+      plan: subPlan,
+      progressLogs: [],
+    };
+
+    // 创建执行引擎
+    const engine = createExecutionEngine(tempTask, {
+      onProgress: async (progress) => {
+        parentTask.progressLogs.push({
+          ...progress,
+          step: `[${subTask.name}] ${progress.step}`,
+        });
+        await this.options.onProgress(parentTask, progress);
+      },
+      onApprovalRequest: async () => true, // 子任务自动批准
+      onAudit: () => {},
+      model: parentTask.model,
+      systemPrompt: parentTask.systemPrompt,
+    });
+
+    try {
+      await engine.start();
+      result.status = "completed";
+      result.result = tempTask.result;
+    } catch (error) {
+      result.status = "failed";
+      result.error = error instanceof Error ? error.message : String(error);
+    } finally {
+      result.completedAt = Date.now();
+    }
+  }
+
+  /**
    * 开始执行任务
    */
-  private async startExecution(task: FlowTask): Promise<void> {
+  private async startExecution(task: FlowTask, executionMode: ExecutionMode): Promise<void> {
     if (!task.plan) return;
 
     task.status = "running";
     task.startedAt = Date.now();
     this.runningCount++;
 
+    if (executionMode === "background") {
+      // 使用后台执行（继承LongTask能力）
+      await this.executeInBackground(task);
+    } else {
+      // 使用内联执行
+      await this.executeInline(task);
+    }
+  }
+
+  /**
+   * 后台执行（继承LongTask能力）
+   */
+  private async executeInBackground(task: FlowTask): Promise<void> {
+    const executor = createBackgroundExecutor(this.agentId, task.id);
+    this.backgroundExecutors.set(task.id, executor);
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        executor.execute({
+          task,
+          plan: task.plan!,
+          model: task.model,
+          systemPrompt: task.systemPrompt,
+          onProgress: async (progress) => {
+            task.progressLogs.push(progress);
+            await this.options.onProgress(task, progress);
+          },
+          onComplete: (result) => {
+            task.status = result.status;
+            task.result = result.result;
+            task.error = result.error;
+            task.completedAt = Date.now();
+            resolve();
+          },
+          onError: (error) => {
+            task.status = "failed";
+            task.error = error;
+            task.completedAt = Date.now();
+            reject(new Error(error));
+          },
+        });
+      });
+
+    } catch (error) {
+      task.status = "failed";
+      task.error = error instanceof Error ? error.message : String(error);
+    } finally {
+      this.backgroundExecutors.delete(task.id);
+      this.runningCount--;
+      await this.options.onComplete(task);
+      this.saveToHistory(task);
+      this.processQueue();
+    }
+  }
+
+  /**
+   * 内联执行（原有方式）
+   */
+  private async executeInline(task: FlowTask): Promise<void> {
     // 创建执行引擎
     const engine = createExecutionEngine(task, {
       onProgress: async (progress) => {
@@ -183,7 +507,6 @@ export class FlowTaskManager {
         return this.handleApprovalRequest(task, request);
       },
       onAudit: (record) => {
-        // 审计记录可以持久化到文件
         console.log(`[FlowTask:${task.id}] ${record.event}`);
       },
       model: task.model,
@@ -283,10 +606,29 @@ export class FlowTaskManager {
 
     // 取消运行中的任务
     if (task.status === "running") {
+      // 检查是否有后台执行器
+      const executor = this.backgroundExecutors.get(taskId);
+      if (executor) {
+        await executor.cancel();
+      }
+
+      // 检查是否有内联引擎
       const engine = this.activeEngines.get(taskId);
       if (engine) {
         await engine.cancel();
       }
+
+      // 取消所有子任务
+      const activeSubTasks = this.activeSubTasks.get(taskId);
+      if (activeSubTasks) {
+        for (const subTaskId of activeSubTasks) {
+          const subExecutor = this.backgroundExecutors.get(`${taskId}-${subTaskId}`);
+          if (subExecutor) {
+            await subExecutor.cancel();
+          }
+        }
+      }
+
       task.status = "cancelled";
       task.completedAt = Date.now();
       task.progressLogs.push({
@@ -352,7 +694,8 @@ export class FlowTaskManager {
             percent: 10,
             timestamp: Date.now(),
           });
-          this.startExecution(task);
+          // 默认使用后台执行
+          this.startExecution(task, "background");
         }
       }
     }
@@ -410,6 +753,22 @@ export class FlowTaskManager {
   getAuditLog(taskId: string): unknown[] | undefined {
     const task = this.tasks.get(taskId);
     return task?.execution?.audit;
+  }
+
+  /**
+   * 获取子任务结果
+   */
+  getSubTaskResults(taskId: string): SubTaskResult[] | undefined {
+    const results = this.subTaskResults.get(taskId);
+    return results ? Array.from(results.values()) : undefined;
+  }
+
+  /**
+   * 获取后台执行器 PID
+   */
+  getBackgroundExecutorPid(taskId: string): number | undefined {
+    const executor = this.backgroundExecutors.get(taskId);
+    return executor?.getChildPid();
   }
 }
 
@@ -469,3 +828,7 @@ export function getFlowTaskManager(agentId: string, options?: Partial<FlowTaskMa
   }
   return managers.get(agentId)!;
 }
+
+export { createBackgroundExecutor } from "./background-executor.js";
+export { createTaskSplitter, createResultMerger } from "./task-splitter.js";
+export type { ExecutionMode };
