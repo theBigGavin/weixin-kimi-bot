@@ -603,11 +603,10 @@ async function handleAgentCommand(
         clearInterval(checkInterval);
         
         if (currentTask.status === "completed") {
-          // 提取版本号（匹配最后一个，因为 npm 会输出旧版本，新版本在最后）
-          const allMatches = [...(currentTask.result || "").matchAll(/v?\d+\.\d+\.\d+/g)];
-          const versionMatch = allMatches.length > 0 ? allMatches[allMatches.length - 1][0] : null;
-          // 去掉 v 前缀，保持格式一致（显示时会自动加上 v）
-          const version = versionMatch ? versionMatch.replace(/^v/, "") : "未知";
+          // 提取版本号 - 从 "🎉 版本 vX.Y.Z 发布完成" 这一行提取（最可靠）
+          const result = currentTask.result || "";
+          const releaseMatch = result.match(/🎉 版本 v(\d+\.\d+\.\d+)/);
+          const version = releaseMatch ? releaseMatch[1] : "未知";
           
           // 发送部署成功通知（在重启前）
           const deployMessage = 
@@ -1773,11 +1772,9 @@ async function executeDeploy(
       const errorOutput = Buffer.concat(stderr).toString("utf-8");
       
       if (code === 0) {
-        // 提取版本号（匹配最后一个，因为 npm 会输出旧版本，新版本在最后）
-        const allMatches = [...output.matchAll(/v?\d+\.\d+\.\d+/g)];
-        const versionMatch = allMatches.length > 0 ? allMatches[allMatches.length - 1][0] : null;
-        // 去掉 v 前缀，保持格式一致（显示时会自动加上 v）
-        const version = versionMatch ? versionMatch.replace(/^v/, "") : "未知";
+        // 提取版本号 - 从 "🎉 版本 vX.Y.Z 发布完成" 这一行提取（最可靠）
+        const releaseMatch = output.match(/🎉 版本 v(\d+\.\d+\.\d+)/);
+        const version = releaseMatch ? releaseMatch[1] : "未知";
         resolve({ success: true, version, output });
       } else {
         reject(new Error(`版本更新失败: ${errorOutput || output || `退出码: ${code}`}`));
