@@ -44,6 +44,9 @@ export {
 export { SessionContextManager } from './session-context.js';
 export { ConversationStateMachine } from './state-machine.js';
 export { ContextPersistence } from './persistence.js';
+export { ReferenceResolver } from './reference-resolver.js';
+export { IntentResolver } from './intent-resolver.js';
+export { OutputParser, ParseResult } from './output-parser.js';
 
 // ============ 便捷初始化函数 ============
 
