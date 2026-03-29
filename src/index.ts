@@ -4,8 +4,10 @@
  * 支持多个微信账号，每个账号有独立的Agent配置、工作目录和记忆
  */
 import crypto from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, unlinkSync, mkdirSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname } from "node:path";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -47,6 +49,91 @@ import type { AgentConfig, AgentRuntime, AgentMemory } from "./agent/types.js";
 import { extractMemoryFromConversation, mergeMemory, saveMemory } from "./memory/manager.js";
 
 const SESSION_EXPIRED_ERRCODE = -14;
+
+// ============ 服务器重启通知 ============
+
+const RESTART_INFO_FILE = join(homedir(), ".weixin-kimi-bot", "restart-info.json");
+
+interface RestartInfo {
+  timestamp: number;
+  reason: "deploy" | "manual" | "crash" | "unknown";
+  operator: string;
+  version?: string;
+  agentId?: string;
+  chatId?: string;
+  contextToken?: string;
+}
+
+/**
+ * 保存重启信息到文件
+ */
+function saveRestartInfo(info: RestartInfo): void {
+  try {
+    const dir = dirname(RESTART_INFO_FILE);
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
+    }
+    writeFileSync(RESTART_INFO_FILE, JSON.stringify(info, null, 2));
+  } catch (error) {
+    console.error("[RestartNotify] 保存重启信息失败:", error);
+  }
+}
+
+/**
+ * 读取重启信息
+ */
+function loadRestartInfo(): RestartInfo | null {
+  try {
+    if (existsSync(RESTART_INFO_FILE)) {
+      const data = readFileSync(RESTART_INFO_FILE, "utf-8");
+      return JSON.parse(data) as RestartInfo;
+    }
+  } catch (error) {
+    console.error("[RestartNotify] 读取重启信息失败:", error);
+  }
+  return null;
+}
+
+/**
+ * 清除重启信息文件
+ */
+function clearRestartInfo(): void {
+  try {
+    if (existsSync(RESTART_INFO_FILE)) {
+      unlinkSync(RESTART_INFO_FILE);
+    }
+  } catch (error) {
+    console.error("[RestartNotify] 清除重启信息失败:", error);
+  }
+}
+
+/**
+ * 格式化重启通知消息
+ */
+function formatRestartNotification(info: RestartInfo): string {
+  const timeStr = new Date(info.timestamp).toLocaleString("zh-CN");
+  const reasonMap: Record<string, string> = {
+    deploy: "部署新版本",
+    manual: "手动重启",
+    crash: "异常恢复",
+    unknown: "未知原因",
+  };
+
+  let msg = "🔄 **服务器已重启**\n\n";
+  msg += `⏰ 重启时间: ${timeStr}\n`;
+  msg += `📋 重启原因: ${reasonMap[info.reason] || info.reason}`;
+  if (info.version) {
+    msg += ` v${info.version}`;
+  }
+  msg += "\n";
+  msg += `👤 操作者: ${info.operator}\n`;
+  if (info.agentId) {
+    msg += `🤖 Agent: ${info.agentId}\n`;
+  }
+  msg += "\n✅ 服务已恢复正常运行。";
+
+  return msg;
+}
 const SESSION_PAUSE_MS = 60 * 60 * 1000;
 
 // ============ Agent 运行时缓存 ============
@@ -1294,6 +1381,57 @@ async function main() {
   console.log(`活跃 Agent 数: ${activeAgents.size}`);
   console.log("按 Ctrl+C 停止\n");
 
+  // 检查是否有重启通知需要发送
+  const restartInfo = loadRestartInfo();
+  if (restartInfo) {
+    console.log("[RestartNotify] 检测到重启信息，准备发送通知...");
+    
+    // 尝试发送通知到原始聊天（如果是部署触发的）
+    if (restartInfo.chatId && restartInfo.contextToken) {
+      const agentSession = restartInfo.agentId 
+        ? activeAgents.get(restartInfo.agentId) 
+        : Array.from(activeAgents.values())[0];
+      
+      if (agentSession) {
+        try {
+          const notifyMsg = formatRestartNotification(restartInfo);
+          await sendTextReply(
+            agentSession.api,
+            restartInfo.chatId,
+            restartInfo.contextToken,
+            notifyMsg
+          );
+          console.log(`[RestartNotify] 已向用户 ${restartInfo.operator} 发送重启通知`);
+        } catch (error) {
+          console.error("[RestartNotify] 发送重启通知失败:", error);
+        }
+      }
+    }
+    
+    // 同时通过通知通道发送（如果有配置）
+    for (const session of activeAgents.values()) {
+      const notificationManager = getNotificationManager(session.config.id);
+      try {
+        const notifyMsg = formatRestartNotification(restartInfo);
+        await notificationManager.sendToAll({
+          title: "服务器已重启",
+          content: notifyMsg,
+          timestamp: Date.now(),
+          metadata: {
+            type: "server_restart",
+            agentId: session.config.id,
+          },
+        });
+        console.log(`[RestartNotify] 已通过通知通道发送 (Agent: ${session.config.id})`);
+      } catch (error) {
+        console.error(`[RestartNotify] 通知通道发送失败 (Agent: ${session.config.id}):`, error);
+      }
+    }
+    
+    // 清除重启信息
+    clearRestartInfo();
+  }
+
   // 定时任务和通知管理器已在各Agent初始化时启动
 
   // 优雅关闭
@@ -1582,7 +1720,19 @@ async function executeDeploy(
   await sendTextReply(api, userId, contextToken, deployMessage);
   console.log(`[Deploy] 已发送部署成功通知，3秒后重启服务...`);
   
-  // 步骤3: 延迟执行重启（给通知发送留出时间）
+  // 步骤3: 保存重启信息，用于启动后通知
+  saveRestartInfo({
+    timestamp: Date.now(),
+    reason: "deploy",
+    operator: userId,
+    version: versionResult.version,
+    agentId: process.env.ACTIVE_AGENT_ID,
+    chatId: userId,
+    contextToken: contextToken,
+  });
+  console.log(`[Deploy] 已保存重启信息到 ${RESTART_INFO_FILE}`);
+  
+  // 步骤4: 延迟执行重启（给通知发送留出时间）
   setTimeout(() => {
     console.log(`[Deploy] 执行服务重启...`);
     const restartChild = spawn("pm2", ["restart", "weixin-kimi-bot"], {
