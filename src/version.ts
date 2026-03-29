@@ -10,7 +10,7 @@
 export const VERSION = {
   major: 0,
   minor: 6,
-  patch: 18,
+  patch: 19,
   
   /** 完整版本号 */
   get full(): string {
@@ -21,7 +21,7 @@ export const VERSION = {
   date: "2026-03-29",
   
   /** 版本说明 */
-  description: "集成 SearXNG 搜索服务到消息处理流程",
+  description: "wip: integrate Task Router into main message flow",
 };
 
 /** 提交哈希（由构建时注入） */
