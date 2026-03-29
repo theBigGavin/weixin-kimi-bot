@@ -84,8 +84,10 @@ export function parseProgress(output: string, maxTurns: number, currentTurnEstim
     }
   }
 
-  // 估算百分比
-  let percent = Math.min(95, Math.round((currentTurnEstimate / Math.max(1, maxTurns)) * 100));
+  // 估算百分比：基于实际工具调用次数
+  const toolCallMatches = output.match(/(?:ReadFile|WriteFile|StrReplaceFile|Shell|Grep|Glob|Agent|TaskList|TaskOutput|SearchWeb|FetchURL|AskUserQuestion|EnterPlanMode|ExitPlanMode)\s*\(/g);
+  const actualSteps = toolCallMatches ? toolCallMatches.length : 0;
+  let percent = Math.min(95, Math.round((actualSteps / Math.max(1, maxTurns)) * 100));
   if (bestMatch?.step === "思考中") {
     percent = Math.min(percent, 30);
   }
@@ -99,6 +101,37 @@ export function parseProgress(output: string, maxTurns: number, currentTurnEstim
     fileName,
     percent,
     detail,
+    timestamp: Date.now(),
+  };
+}
+
+/**
+ * 解析命令执行输出的进度信息
+ */
+export function parseCommandProgress(output: string, command: string, currentTick: number): ProgressInfo {
+  const lines = output.split("\n").filter(l => l.trim());
+  const lastLine = lines[lines.length - 1]?.trim() || "";
+
+  // 根据输出内容推断步骤
+  let step = "执行命令中";
+  if (lastLine.match(/npm|node|tsc|build/i)) {
+    step = "构建/打包中";
+  } else if (lastLine.match(/git|version|tag/i)) {
+    step = "版本更新中";
+  } else if (lastLine.match(/test|spec/i)) {
+    step = "运行测试中";
+  } else if (lastLine.match(/install|download/i)) {
+    step = "安装依赖中";
+  }
+
+  // 命令任务通常很快，按时间估算进度（最多2分钟）
+  const estimatedTotalTicks = 4; // 4 * 30s = 2分钟
+  const percent = Math.min(95, Math.round((currentTick / estimatedTotalTicks) * 100));
+
+  return {
+    step,
+    percent,
+    detail: lastLine.slice(0, 100) || command,
     timestamp: Date.now(),
   };
 }

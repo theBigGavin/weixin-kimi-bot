@@ -27,7 +27,7 @@ import type {
   TaskSnapshot,
   RecoveredTask,
 } from "./types.js";
-import { parseProgress, formatProgressMessage } from "./parser.js";
+import { parseProgress, parseCommandProgress, formatProgressMessage } from "./parser.js";
 import { TaskPersistenceManager } from "./persistence.js";
 import { TaskRecoveryManager, RecoveryResult, rebuildTaskFromSnapshot } from "./recovery.js";
 
@@ -363,38 +363,58 @@ export class LongTaskManager {
     // 保存快照
     this.persistence.saveSnapshot(task).catch(() => {});
 
-    // 构建 Kimi 参数
-    const args: string[] = ["--quiet"];
-    if (task.model) {
-      args.push("--model", task.model);
-    }
-    if (task.maxTurns) {
-      args.push("--max-steps-per-turn", String(task.maxTurns));
-    }
+    let child: ReturnType<typeof spawn>;
+    let turnEstimate = 1;
+    let isCommandTask = false;
 
-    let finalPrompt = task.prompt;
-    if (task.systemPrompt) {
-      finalPrompt = `${task.systemPrompt}\n\n=== 用户消息 ===\n\n${task.prompt}`;
-    }
-    args.push("--prompt", finalPrompt);
+    if (task.command) {
+      // 自定义命令任务
+      isCommandTask = true;
+      const shell = process.platform === "win32";
+      const [cmd, ...cmdArgs] = task.command.split(" ");
+      child = spawn(cmd, cmdArgs, {
+        cwd: task.cwd,
+        stdio: ["ignore", "pipe", "pipe"],
+        shell,
+      });
+    } else {
+      // Kimi 任务
+      const args: string[] = ["--quiet"];
+      if (task.model) {
+        args.push("--model", task.model);
+      }
+      if (task.maxTurns) {
+        args.push("--max-steps-per-turn", String(task.maxTurns));
+      }
 
-    const child = spawn("kimi", args, {
-      cwd: task.cwd,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+      let finalPrompt = task.prompt;
+      if (task.systemPrompt) {
+        finalPrompt = `${task.systemPrompt}\n\n=== 用户消息 ===\n\n${task.prompt}`;
+      }
+      args.push("--prompt", finalPrompt);
+
+      child = spawn("kimi", args, {
+        cwd: task.cwd,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    }
 
     task.childPid = child.pid;
 
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
-    let turnEstimate = 1;
 
     // 进度报告定时器
     const reportTimer = setInterval(async () => {
       try {
         turnEstimate++;
         const combinedOutput = Buffer.concat(stdout).toString("utf-8") + "\n" + Buffer.concat(stderr).toString("utf-8");
-        const progress = parseProgress(combinedOutput, task.maxTurns, turnEstimate);
+        let progress: ProgressInfo;
+        if (isCommandTask) {
+          progress = parseCommandProgress(combinedOutput, task.command || "", turnEstimate);
+        } else {
+          progress = parseProgress(combinedOutput, task.maxTurns, turnEstimate);
+        }
         task.progressLogs.push(progress);
         
         // 保存进度快照
@@ -411,11 +431,11 @@ export class LongTaskManager {
 
     this.reportTimers.set(taskId, reportTimer);
 
-    child.stdout.on("data", (data: Buffer) => {
+    child.stdout?.on("data", (data: Buffer) => {
       stdout.push(data);
     });
 
-    child.stderr.on("data", (data: Buffer) => {
+    child.stderr?.on("data", (data: Buffer) => {
       stderr.push(data);
     });
 

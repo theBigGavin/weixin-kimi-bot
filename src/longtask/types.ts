@@ -31,6 +31,8 @@ export interface TaskSnapshot {
   model: string;
   systemPrompt?: string;
   maxTurns: number;
+  /** 自定义命令（如果设置，则执行此命令而非 kimi） */
+  command?: string;
   /** 快照版本号 */
   snapshotVersion: number;
   /** 最后更新时间 */
@@ -64,6 +66,8 @@ export interface LongTask {
   model: string;
   systemPrompt?: string;
   maxTurns: number;
+  /** 自定义命令（如果设置，则执行此命令而非 kimi） */
+  command?: string;
 }
 
 export interface LongTaskHistoryRecord {

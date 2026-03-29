@@ -579,18 +579,85 @@ async function handleAgentCommand(
       // 获取项目路径
       const projectPath = config.projectSpace?.path || process.cwd();
       
-      // 异步执行部署
-      (async () => {
-        try {
-          const result = await executeDeploy(session.api, fromUser, contextToken, projectPath, versionType as "patch" | "minor" | "major");
-          await sendTextReply(session.api, fromUser, contextToken, result);
-        } catch (err) {
-          const errorMsg = err instanceof Error ? err.message : String(err);
-          await sendTextReply(session.api, fromUser, contextToken, `❌ **部署失败**\n\n错误: ${errorMsg}`);
-        }
-      })();
+      // 使用 LongTask 模式执行部署
+      const ltManager = await getLongTaskManager(config.id);
+      const task = ltManager.submit({
+        agentId: config.id,
+        userId: fromUser,
+        chatId: fromUser,
+        contextToken,
+        prompt: `部署 Bot: ${versionType}`,
+        command: `npm run version:${versionType}`,
+        cwd: projectPath,
+        model: config.ai.model,
+        maxTurns: 1,
+      });
       
-      return `🚀 **开始部署**\n\n类型: ${versionType}\n路径: ${projectPath}\n\n部署正在进行中，完成后会通知您...`;
+      // 监听部署任务完成
+      const checkInterval = setInterval(async () => {
+        const currentTask = ltManager.getTask(task.id);
+        if (!currentTask || currentTask.status === "pending" || currentTask.status === "running") {
+          return;
+        }
+        
+        clearInterval(checkInterval);
+        
+        if (currentTask.status === "completed") {
+          // 提取版本号
+          const versionMatch = (currentTask.result || "").match(/v?\d+\.\d+\.\d+/);
+          const version = versionMatch ? versionMatch[0] : "未知";
+          
+          // 发送部署成功通知（在重启前）
+          const deployMessage = 
+            `✅ **部署成功**\n\n` +
+            `版本: ${version}\n` +
+            `类型: ${versionType}\n` +
+            `时间: ${new Date().toLocaleString("zh-CN")}\n\n` +
+            `🔄 服务将在 3 秒后重启以应用新版本...`;
+          
+          await sendTextReply(session.api, fromUser, contextToken, deployMessage);
+          console.log(`[Deploy] 已发送部署成功通知，3秒后重启服务...`);
+          
+          // 保存重启信息，用于启动后通知
+          saveRestartInfo({
+            timestamp: Date.now(),
+            reason: "deploy",
+            operator: fromUser,
+            version: version,
+            agentId: process.env.ACTIVE_AGENT_ID,
+            chatId: fromUser,
+            contextToken: contextToken,
+          });
+          console.log(`[Deploy] 已保存重启信息到 ${RESTART_INFO_FILE}`);
+          
+          // 延迟执行重启（给通知发送留出时间）
+          setTimeout(() => {
+            console.log(`[Deploy] 执行服务重启...`);
+            const restartChild = spawn("pm2", ["restart", "weixin-kimi-bot"], {
+              cwd: projectPath,
+              stdio: "ignore",
+              detached: true,
+            });
+            restartChild.unref();
+          }, 3000);
+        } else {
+          // 部署失败
+          const errorMsg = currentTask.error || "未知错误";
+          await sendTextReply(session.api, fromUser, contextToken, `❌ **部署失败**\n\n错误: ${errorMsg}`);
+          console.error(`[Deploy] 部署失败: ${errorMsg}`);
+        }
+      }, 5000);
+      
+      const queueLen = ltManager.getQueueLength();
+      let response = `🚀 部署任务已提交为耗时任务\n\nID: \`${task.id}\`\n类型: ${versionType}\n路径: ${projectPath}\n`;
+      if (task.status === "pending" && queueLen > 0) {
+        response += `排队位置: 前面还有 ${queueLen} 个任务\n`;
+      }
+      response += `\n每 ${ltManager.getReportIntervalSec()} 秒会收到进度报告。\n`;
+      response += `使用 \`/longtask status ${task.id}\` 查看进度\n`;
+      response += `使用 \`/longtask cancel ${task.id}\` 取消任务`;
+      
+      return response;
     }
 
     case "flowtask": {
