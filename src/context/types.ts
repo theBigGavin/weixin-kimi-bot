@@ -127,6 +127,8 @@ export enum IntentType {
   SWITCH_TOPIC = 'switch_topic',
   /** 回到之前话题 */
   RETURN_TO = 'return_to',
+  /** 更新上下文/同步记忆 */
+  UPDATE_CONTEXT = 'update_context',
 
   // ===== 其他 =====
   /** 未知意图 */

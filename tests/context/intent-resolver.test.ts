@@ -116,4 +116,35 @@ describe('IntentResolver', () => {
       expect(codeEntity?.value).toBe('console.log');
     });
   });
+
+  describe('更新上下文意图', () => {
+    it('应该识别"更新记忆"', async () => {
+      const context = createTestContext(ConversationState.PLANNING);
+      const intent = await resolver.identify('项目经历了重大重构，请熟悉下项目的最新情况，更新下记忆。', context);
+      
+      expect(intent.type).toBe(IntentType.UPDATE_CONTEXT);
+      expect(intent.confidence).toBeGreaterThan(0.8);
+    });
+
+    it('应该识别"同步项目情况"', async () => {
+      const context = createTestContext(ConversationState.IDLE);
+      const intent = await resolver.identify('请同步一下项目的最新情况', context);
+      
+      expect(intent.type).toBe(IntentType.UPDATE_CONTEXT);
+    });
+
+    it('应该识别"刷新上下文"', async () => {
+      const context = createTestContext(ConversationState.EXECUTING);
+      const intent = await resolver.identify('刷新上下文', context);
+      
+      expect(intent.type).toBe(IntentType.UPDATE_CONTEXT);
+    });
+
+    it('应该识别"重新了解项目"', async () => {
+      const context = createTestContext(ConversationState.COMPLETED);
+      const intent = await resolver.identify('我想重新了解一下当前项目', context);
+      
+      expect(intent.type).toBe(IntentType.UPDATE_CONTEXT);
+    });
+  });
 });

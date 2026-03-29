@@ -183,6 +183,19 @@ const INTENT_PATTERNS: IntentPattern[] = [
     ],
     confidence: 0.8,
   },
+
+  // ===== 更新上下文/同步记忆 =====
+  {
+    type: IntentType.UPDATE_CONTEXT,
+    patterns: [
+      /(更新|刷新|同步).*(记忆|上下文|项目|代码|情况)/i,
+      /(熟悉|了解|重新了解|重新熟悉).*(项目|情况|最新|当前)/i,
+      /(项目|代码).*(重构|变化|更新|改动)/i,
+      /记忆.*(需要|应该|要).*(更新|刷新)/i,
+      /重新.*(开始|了解|熟悉|分析)/i,
+    ],
+    confidence: 0.85,
+  },
 ];
 
 /**
@@ -494,6 +507,7 @@ export class IntentResolver {
       [IntentType.REFERENCE]: '引用',
       [IntentType.SWITCH_TOPIC]: '切换话题',
       [IntentType.RETURN_TO]: '回到话题',
+      [IntentType.UPDATE_CONTEXT]: '更新上下文',
       [IntentType.UNKNOWN]: '未知',
     };
     return descriptions[intent] || intent;

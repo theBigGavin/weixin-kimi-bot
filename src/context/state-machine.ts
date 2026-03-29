@@ -341,6 +341,63 @@ export class ConversationStateMachine {
         intent: IntentType.EXECUTE,
         to: ConversationState.PLANNING,
       },
+      {
+        from: ConversationState.COMPLETED,
+        intent: IntentType.UPDATE_CONTEXT,
+        to: ConversationState.EXPLORING,
+      },
+
+      // ========== 从任何状态都可以更新上下文 ==========
+      {
+        from: ConversationState.IDLE,
+        intent: IntentType.UPDATE_CONTEXT,
+        to: ConversationState.EXPLORING,
+      },
+      {
+        from: ConversationState.EXPLORING,
+        intent: IntentType.UPDATE_CONTEXT,
+        to: ConversationState.EXPLORING,
+      },
+      {
+        from: ConversationState.CLARIFYING,
+        intent: IntentType.UPDATE_CONTEXT,
+        to: ConversationState.EXPLORING,
+      },
+      {
+        from: ConversationState.PROPOSING,
+        intent: IntentType.UPDATE_CONTEXT,
+        to: ConversationState.EXPLORING,
+      },
+      {
+        from: ConversationState.COMPARING,
+        intent: IntentType.UPDATE_CONTEXT,
+        to: ConversationState.EXPLORING,
+      },
+      {
+        from: ConversationState.REFINING,
+        intent: IntentType.UPDATE_CONTEXT,
+        to: ConversationState.EXPLORING,
+      },
+      {
+        from: ConversationState.PLANNING,
+        intent: IntentType.UPDATE_CONTEXT,
+        to: ConversationState.EXPLORING,
+      },
+      {
+        from: ConversationState.EXECUTING,
+        intent: IntentType.UPDATE_CONTEXT,
+        to: ConversationState.EXPLORING,
+      },
+      {
+        from: ConversationState.CONFIRMING,
+        intent: IntentType.UPDATE_CONTEXT,
+        to: ConversationState.EXPLORING,
+      },
+      {
+        from: ConversationState.REVIEWING,
+        intent: IntentType.UPDATE_CONTEXT,
+        to: ConversationState.EXPLORING,
+      },
 
       // ========== 从任何状态都可以取消 ==========
       {
