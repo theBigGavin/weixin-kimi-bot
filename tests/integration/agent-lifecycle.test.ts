@@ -250,8 +250,9 @@ describe("Agent 生命周期集成测试", () => {
       scheduler.stop();
     });
 
-    it("应该正确初始化长任务管理器", () => {
-      const ltManager = getLongTaskManager(mockAgentConfig.id, {
+    it("应该正确初始化长任务管理器", async () => {
+      const { getLongTaskManager } = await import("../../src/longtask/manager.js");
+      const ltManager = await getLongTaskManager(mockAgentConfig.id, {
         maxConcurrency: 2,
         reportIntervalMs: 1000,
         onProgress: async () => {},
@@ -262,7 +263,7 @@ describe("Agent 生命周期集成测试", () => {
       expect(ltManager.getQueueLength()).toBe(0);
     });
 
-    it("应该正确初始化流程任务管理器", () => {
+    it("应该正确初始化流程任务管理器", async () => {
       const ftManager = getFlowTaskManager(mockAgentConfig.id, {
         maxConcurrency: 2,
         reportIntervalMs: 1000,
@@ -271,7 +272,7 @@ describe("Agent 生命周期集成测试", () => {
         onProgress: async () => {},
         onComplete: async () => {},
         onCancel: async () => {},
-        onApprovalRequest: async () => {},
+        onApprovalRequest: async () => true,
       });
 
       expect(ftManager).toBeDefined();

@@ -28,7 +28,7 @@ describe("消息处理集成测试", () => {
         item_list: [
           {
             type: 1, // TEXT
-            text_item: { content: "Hello, Bot!" },
+            text_item: { text: "Hello, Bot!" },
           },
         ],
       };
@@ -57,7 +57,7 @@ describe("消息处理集成测试", () => {
         item_list: [
           {
             type: 1,
-            text_item: { content: "System message" },
+            text_item: { text: "System message" },
           },
         ],
       };
