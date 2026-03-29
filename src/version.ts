@@ -9,8 +9,8 @@
 
 export const VERSION = {
   major: 0,
-  minor: 4,
-  patch: 10,
+  minor: 5,
+  patch: 0,
   
   /** 完整版本号 */
   get full(): string {
@@ -21,7 +21,7 @@ export const VERSION = {
   date: "2026-03-29",
   
   /** 版本说明 */
-  description: "wip: 实现服务器重启通知功能",
+  description: "实现 Task Router 智能任务路由系统",
 };
 
 /** 提交哈希（由构建时注入） */
