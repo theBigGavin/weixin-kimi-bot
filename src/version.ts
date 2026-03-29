@@ -10,7 +10,7 @@
 export const VERSION = {
   major: 0,
   minor: 6,
-  patch: 15,
+  patch: 16,
   
   /** 完整版本号 */
   get full(): string {
@@ -21,7 +21,7 @@ export const VERSION = {
   date: "2026-03-29",
   
   /** 版本说明 */
-  description: "使用copyFile+unlink替代rename",
+  description: "PROPOSING状态允许新需求转移",
 };
 
 /** 提交哈希（由构建时注入） */
