@@ -10,7 +10,7 @@
 export const VERSION = {
   major: 0,
   minor: 4,
-  patch: 4,
+  patch: 5,
   
   /** 完整版本号 */
   get full(): string {
@@ -21,7 +21,7 @@ export const VERSION = {
   date: "2026-03-29",
   
   /** 版本说明 */
-  description: "FlowTask V2 - 继承LongTask后台执行能力 + 自动任务拆分",
+  description: "添加 /deploy 命令 - 支持微信消息触发部署 Bot",
 };
 
 /** 提交哈希（由构建时注入） */
