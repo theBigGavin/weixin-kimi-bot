@@ -393,7 +393,31 @@ npm run agent:delete <agent-id>
 | `/route` | 智能任务路由分析 |
 | `/context` | 查看上下文详情 |
 | `/session` | 查看 Session 状态 |
+| `/deploy` | 部署更新（自动运行测试验证） |
 | `/ver` | 查看版本信息 |
+
+### /deploy 命令说明
+
+**功能：** 部署 Bot 更新（patch/minor/major）
+
+**特点：**
+- 部署前**自动运行测试验证**
+- 如有测试失败或跳过，将**阻止部署**
+- 支持 `--force` 强制部署（不推荐）
+
+**用法：**
+```bash
+/deploy patch          # 修订版本 +1，先运行测试
+/deploy minor          # 次版本 +1，先运行测试
+/deploy major          # 主版本 +1，先运行测试
+/deploy patch --force  # 强制部署，跳过测试验证
+```
+
+**部署流程：**
+1. 运行 `npm test` 进行集成测试
+2. 验证测试结果（通过且没有跳过项）
+3. 测试通过后执行版本更新
+4. 自动重启服务
 
 ## 相关文档
 
