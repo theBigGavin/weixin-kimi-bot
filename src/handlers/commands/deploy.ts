@@ -9,6 +9,8 @@ import { saveRestartInfo } from "../../services/restart-notify.js";
 import { sendTextReply } from "../message-utils.js";
 import { execSync } from "node:child_process";
 import { cleanupTestTempDirs } from "../../scripts/cleanup-temp-dirs.js";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 /**
  * 部署环境类型
@@ -57,11 +59,21 @@ export async function runIntegrationTests(): Promise<TestResult> {
   try {
     console.log("[Deploy] 运行集成测试...");
     
+    // 设置测试数据目录环境变量，避免污染真实数据
+    const testDataDir = process.env.TEST_DATA_DIR || 
+      join(homedir(), ".weixin-kimi-bot", "test-data");
+    
     // 运行测试并捕获输出
     const output = execSync("npm test 2>&1", { 
       encoding: "utf-8",
-      timeout: 120000, // 2分钟超时
+      timeout: 180000, // 3分钟超时（测试可能较慢）
       cwd: process.cwd(),
+      env: {
+        ...process.env,
+        TEST_DATA_DIR: testDataDir,
+        NODE_ENV: "test",
+      },
+      stdio: ["pipe", "pipe", "pipe"],
     });
 
     // 解析测试结果
@@ -73,6 +85,8 @@ export async function runIntegrationTests(): Promise<TestResult> {
     const failed = failedMatch ? parseInt(failedMatch[1], 10) : 0;
     const skipped = skippedMatch ? parseInt(skippedMatch[1], 10) : 0;
 
+    console.log(`[Deploy] 测试解析结果: passed=${passed}, failed=${failed}, skipped=${skipped}`);
+
     return {
       success: failed === 0,
       passed,
@@ -80,8 +94,17 @@ export async function runIntegrationTests(): Promise<TestResult> {
       skipped,
     };
   } catch (error) {
-    // 测试失败时也会抛出错误
-    const output = error instanceof Error ? error.message : String(error);
+    // 测试失败时也会抛出错误，尝试从错误对象获取输出
+    let output = "";
+    if (error && typeof error === "object") {
+      // execSync 错误对象可能有 stdout 属性
+      const execError = error as { stdout?: string; stderr?: string; message: string };
+      output = execError.stdout || execError.stderr || execError.message || String(error);
+    } else {
+      output = String(error);
+    }
+    
+    console.error(`[Deploy] 测试执行出错或包含失败用例，原始输出:`, output.substring(0, 500));
     
     const passedMatch = output.match(/Tests\s+(\d+)\s+passed/);
     const failedMatch = output.match(/Tests\s+(\d+)\s+failed/);
@@ -90,6 +113,8 @@ export async function runIntegrationTests(): Promise<TestResult> {
     const passed = passedMatch ? parseInt(passedMatch[1], 10) : 0;
     const failed = failedMatch ? parseInt(failedMatch[1], 10) : 0;
     const skipped = skippedMatch ? parseInt(skippedMatch[1], 10) : 0;
+
+    console.error(`[Deploy] 解析结果: passed=${passed}, failed=${failed}, skipped=${skipped}`);
 
     return {
       success: false,
