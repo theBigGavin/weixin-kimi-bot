@@ -10,7 +10,7 @@
 export const VERSION = {
   major: 0,
   minor: 7,
-  patch: 0,
+  patch: 1,
   
   /** 完整版本号 */
   get full(): string {
@@ -18,10 +18,10 @@ export const VERSION = {
   },
   
   /** 版本日期（最后一次更新日期） */
-  date: "2026-03-29",
+  date: "2026-03-30",
   
   /** 版本说明 */
-  description: "实现可插拔工作流引擎，支持复杂定时任务自动化",
+  description: "wip: 修复定时任务确认逻辑失效问题",
 };
 
 /** 提交哈希（由构建时注入） */
