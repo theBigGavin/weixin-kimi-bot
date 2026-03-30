@@ -225,14 +225,31 @@ export async function deployHandler(args: string, context: CommandContext): Prom
   });
 
   // 监听部署任务完成
-  const checkInterval = setInterval(async () => {
+  let checkCount = 0;
+  const maxChecks = 360; // 最多检查30分钟 (360 * 5秒 = 1800秒)
+  
+  const checkTaskStatus = async () => {
     const currentTask = ltManager.getTask(task.id);
-    if (!currentTask || currentTask.status === "pending" || currentTask.status === "running") {
+    checkCount++;
+    
+    if (!currentTask) {
+      console.error(`[Deploy] 任务 ${task.id} 不存在`);
+      await sendTextReply(session.api, fromUser, contextToken, `❌ **部署失败**\n\n任务被意外删除`);
+      return;
+    }
+    
+    // 任务还在运行中，继续等待
+    if (currentTask.status === "pending" || currentTask.status === "running") {
+      if (checkCount < maxChecks) {
+        setTimeout(checkTaskStatus, 5000);
+      } else {
+        console.error(`[Deploy] 任务 ${task.id} 超时`);
+        await sendTextReply(session.api, fromUser, contextToken, `❌ **部署失败**\n\n任务执行超时（超过30分钟）`);
+      }
       return;
     }
 
-    clearInterval(checkInterval);
-
+    // 任务已完成（成功或失败）
     if (currentTask.status === "completed") {
       const result = currentTask.result || "";
       const releaseMatch = result.match(/🎉 版本 v(\d+\.\d+\.\d+)/);
@@ -245,8 +262,12 @@ export async function deployHandler(args: string, context: CommandContext): Prom
         `时间: ${new Date().toLocaleString("zh-CN")}\n\n` +
         `🔄 服务将在 3 秒后重启以应用新版本...`;
 
-      await sendTextReply(session.api, fromUser, contextToken, deployMessage);
-      console.log(`[Deploy] 已发送部署成功通知，3秒后重启服务...`);
+      try {
+        await sendTextReply(session.api, fromUser, contextToken, deployMessage);
+        console.log(`[Deploy] 已发送部署成功通知，3秒后重启服务...`);
+      } catch (error) {
+        console.error(`[Deploy] 发送通知失败:`, error);
+      }
 
       saveRestartInfo({
         timestamp: Date.now(),
@@ -269,11 +290,21 @@ export async function deployHandler(args: string, context: CommandContext): Prom
         restartChild.unref();
       }, 3000);
     } else {
+      // 任务失败
       const errorMsg = currentTask.error || "未知错误";
-      await sendTextReply(session.api, fromUser, contextToken, `❌ **部署失败**\n\n错误: ${errorMsg}`);
-      console.error(`[Deploy] 部署失败: ${errorMsg}`);
+      try {
+        await sendTextReply(session.api, fromUser, contextToken, `❌ **部署失败**\n\n错误: ${errorMsg}`);
+        console.error(`[Deploy] 部署失败: ${errorMsg}`);
+      } catch (error) {
+        console.error(`[Deploy] 发送失败通知失败:`, error);
+      }
     }
-  }, 5000);
+  };
+  
+  // 立即开始检查（任务可能很快完成）
+  checkTaskStatus().catch(error => {
+    console.error(`[Deploy] 检查任务状态时发生错误:`, error);
+  });
 
   const queueLen = ltManager.getQueueLength();
   let response = `🚀 部署任务已提交为耗时任务\n\nID: \`${task.id}\`\n类型: ${versionType}\n路径: ${projectPath}\n`;

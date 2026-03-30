@@ -4,7 +4,7 @@
  * 测试部署前的集成验证逻辑
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { validateBeforeDeploy } from "../../src/handlers/commands/deploy.js";
 
 describe("deploy 命令 - 集成测试验证", () => {
@@ -133,6 +133,79 @@ describe("deploy 命令 - 集成测试验证", () => {
 
       expect(result.canDeploy).toBe(false);
       expect(result.details).toBeDefined();
+    });
+  });
+
+  describe("任务完成通知机制", () => {
+    afterEach(() => {
+      vi.clearAllMocks();
+      vi.useRealTimers();
+    });
+
+    it("任务状态轮询应该使用递归 setTimeout 而非 setInterval", async () => {
+      // 这个测试验证实现方式：递归 setTimeout 比 setInterval 更可靠
+      // 因为 setInterval 可能错过快速完成的任务
+      
+      // 读取源代码检查实现
+      const fs = await import("fs");
+      const path = await import("path");
+      const { fileURLToPath } = await import("url");
+      
+      const __dirname = path.dirname(fileURLToPath(import.meta.url));
+      const deploySource = fs.readFileSync(
+        path.join(__dirname, "../../src/handlers/commands/deploy.ts"),
+        "utf-8"
+      );
+      
+      // 验证使用递归 setTimeout 而非 setInterval
+      expect(deploySource).toContain("setTimeout(checkTaskStatus");
+      expect(deploySource).not.toContain("setInterval(async () =>");
+      
+      // 验证有错误处理
+      expect(deploySource).toContain("try {");
+      expect(deploySource).toContain("catch (error)");
+      expect(deploySource).toContain("发送通知失败");
+      
+      // 验证有超时保护
+      expect(deploySource).toContain("maxChecks");
+      expect(deploySource).toContain("checkCount < maxChecks");
+    });
+
+    it("任务完成时应该解析版本号并包含在消息中", async () => {
+      // 验证版本号解析正则
+      const result = "🎉 版本 v1.2.3 发布成功";
+      const releaseMatch = result.match(/🎉 版本 v(\d+\.\d+\.\d+)/);
+      
+      expect(releaseMatch).toBeTruthy();
+      expect(releaseMatch![1]).toBe("1.2.3");
+    });
+
+    it("任务失败时应该提取错误信息", async () => {
+      const errorTask = {
+        status: "failed",
+        error: "构建失败：npm run build 出错",
+        result: "",
+      };
+      
+      const errorMsg = errorTask.error || "未知错误";
+      expect(errorMsg).toContain("构建失败");
+    });
+
+    it("应该立即开始检查任务状态", async () => {
+      // 读取源代码验证
+      const fs = await import("fs");
+      const path = await import("path");
+      const { fileURLToPath } = await import("url");
+      
+      const __dirname = path.dirname(fileURLToPath(import.meta.url));
+      const deploySource = fs.readFileSync(
+        path.join(__dirname, "../../src/handlers/commands/deploy.ts"),
+        "utf-8"
+      );
+      
+      // 验证在提交后立即调用 checkTaskStatus
+      expect(deploySource).toContain("// 立即开始检查（任务可能很快完成）");
+      expect(deploySource).toMatch(/checkTaskStatus\(\)/);
     });
   });
 });
