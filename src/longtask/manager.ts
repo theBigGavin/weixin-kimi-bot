@@ -558,8 +558,8 @@ export class LongTaskManager {
       // 删除任务快照
       await this.persistence.deleteSnapshot(task.id);
 
-      // 从内存中移除（可选，根据需求可以保留）
-      // this.tasks.delete(task.id);
+      // 从内存中移除
+      this.tasks.delete(task.id);
     } catch (e) {
       console.error(`[LongTask] 完成任务处理失败:`, e);
     }

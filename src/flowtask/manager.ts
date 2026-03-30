@@ -725,6 +725,8 @@ export class FlowTaskManager {
         ).length || 0,
       };
       appendFileSync(this.historyFile, JSON.stringify(record) + "\n");
+      // 从内存中移除
+      this.tasks.delete(task.id);
     } catch (e) {
       console.error(`[FlowTask] 保存历史记录失败:`, e);
     }
