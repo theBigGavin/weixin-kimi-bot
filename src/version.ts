@@ -10,7 +10,7 @@
 export const VERSION = {
   major: 0,
   minor: 7,
-  patch: 3,
+  patch: 4,
   
   /** 完整版本号 */
   get full(): string {
@@ -21,7 +21,7 @@ export const VERSION = {
   date: "2026-03-30",
   
   /** 版本说明 */
-  description: "修复无 sessionContext 时无法创建任务的问题",
+  description: "将 TDD 思想加入系统提示词",
 };
 
 /** 提交哈希（由构建时注入） */
