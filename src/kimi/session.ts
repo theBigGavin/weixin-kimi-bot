@@ -2,7 +2,7 @@
  * Kimi CLI Session 管理工具
  * 
  * 负责检测和管理 Kimi CLI 的 session 状态
- * Kimi CLI 的 session 存储在: ~/.local/share/kimi/sessions/{md5(cwd)}/{session_id}/
+ * Kimi CLI 的 session 存储在: ~/.kimi/sessions/{md5(cwd)}/{session_id}/
  */
 
 import { createHash } from "crypto";
@@ -39,10 +39,11 @@ interface KimiMetadata {
  * 计算 cwd 对应的 Kimi CLI sessions 目录
  * 
  * Kimi CLI 使用 MD5 hash 来命名 sessions 目录
+ * 实际存储位置: ~/.kimi/sessions/{md5(cwd)}/
  */
 export function getKimiSessionsDir(cwd: string): string {
   const cwdHash = createHash("md5").update(cwd).digest("hex");
-  return path.join(homedir(), ".local", "share", "kimi", "sessions", cwdHash);
+  return path.join(homedir(), ".kimi", "sessions", cwdHash);
 }
 
 /**
@@ -91,16 +92,10 @@ export async function checkKimiSession(cwd: string): Promise<KimiSessionInfo> {
 /**
  * 获取指定 work_dir 的最后使用的 session ID
  * 
- * 从 ~/.local/share/kimi/kimi.json 中读取
+ * 从 ~/.kimi/kimi.json 中读取
  */
 export async function getKimiLastSessionId(cwd: string): Promise<string | null> {
-  const metadataPath = path.join(
-    homedir(),
-    ".local",
-    "share",
-    "kimi",
-    "kimi.json"
-  );
+  const metadataPath = path.join(homedir(), ".kimi", "kimi.json");
 
   try {
     const content = await readFile(metadataPath, "utf-8");
