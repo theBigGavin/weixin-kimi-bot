@@ -41,10 +41,24 @@ export function loadRestartInfo(): RestartInfo | null {
   try {
     if (existsSync(RESTART_INFO_FILE)) {
       const data = readFileSync(RESTART_INFO_FILE, "utf-8");
+      // 检查文件内容是否有效
+      if (!data.trim() || data.trim() === "invalid") {
+        console.warn("[RestartNotify] 重启信息文件内容无效，删除文件");
+        unlinkSync(RESTART_INFO_FILE);
+        return null;
+      }
       return JSON.parse(data) as RestartInfo;
     }
   } catch (error) {
-    console.error("[RestartNotify] 读取重启信息失败:", error);
+    console.error("[RestartNotify] 读取重启信息失败，删除损坏的文件:", error);
+    // 尝试删除损坏的文件
+    try {
+      if (existsSync(RESTART_INFO_FILE)) {
+        unlinkSync(RESTART_INFO_FILE);
+      }
+    } catch {
+      // 忽略删除错误
+    }
   }
   return null;
 }
