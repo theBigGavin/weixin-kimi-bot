@@ -8,6 +8,7 @@ import { getLongTaskManager } from "../../longtask/manager.js";
 import { saveRestartInfo } from "../../services/restart-notify.js";
 import { sendTextReply } from "../message-utils.js";
 import { execSync } from "node:child_process";
+import { cleanupTestTempDirs } from "../../scripts/cleanup-temp-dirs.js";
 
 /**
  * 部署环境类型
@@ -202,6 +203,11 @@ export async function deployHandler(args: string, context: CommandContext): Prom
 
   // 测试通过，继续部署
   console.log(`[Deploy] ${validation.message}`);
+
+  // 清理测试产生的临时目录
+  console.log("[Deploy] 清理测试临时目录...");
+  const cleanupResult = cleanupTestTempDirs();
+  console.log(`[Deploy] 已清理 ${cleanupResult.count} 个临时目录`);
 
   const projectPath = session.config.projectSpace?.path || process.cwd();
 
