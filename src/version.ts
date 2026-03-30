@@ -10,7 +10,7 @@
 export const VERSION = {
   major: 0,
   minor: 7,
-  patch: 2,
+  patch: 3,
   
   /** 完整版本号 */
   get full(): string {
@@ -21,7 +21,7 @@ export const VERSION = {
   date: "2026-03-30",
   
   /** 版本说明 */
-  description: "wip: 修复定时任务确认逻辑失效问题",
+  description: "修复无 sessionContext 时无法创建任务的问题",
 };
 
 /** 提交哈希（由构建时注入） */
