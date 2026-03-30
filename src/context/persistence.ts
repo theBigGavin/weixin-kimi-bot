@@ -14,7 +14,9 @@ import { join } from 'path';
  */
 function getAgentDataDir(agentId: string): string {
   // 使用环境变量或默认路径
-  const baseDir = process.env.WEIXIN_KIMI_BOT_DIR || 
+  // 优先级: TEST_DATA_DIR (测试) > WEIXIN_KIMI_BOT_DIR (自定义) > HOME (默认)
+  const baseDir = process.env.TEST_DATA_DIR || 
+    process.env.WEIXIN_KIMI_BOT_DIR || 
     join(process.env.HOME || process.env.USERPROFILE || '', '.weixin-kimi-bot');
   return join(baseDir, 'agents', agentId);
 }

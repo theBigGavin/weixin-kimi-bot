@@ -4,7 +4,15 @@
  * 测试 Agent 的初始化、运行和关闭流程
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
+import { tmpdir } from "os";
+import { mkdtempSync, rmSync } from "fs";
+import { join } from "path";
+
+// 在导入任何模块前设置测试目录
+const testDataDir = mkdtempSync(join(tmpdir(), "agent-lifecycle-test-"));
+process.env.TEST_DATA_DIR = testDataDir;
+
 import type { AgentConfig, AgentRuntime } from "../../src/agent/types.js";
 import type { AgentSession } from "../../src/handlers/types.js";
 import {
@@ -104,6 +112,16 @@ describe("Agent 生命周期集成测试", () => {
     vi.unstubAllEnvs();
     // 清理调度器
     getScheduler(mockAgentConfig.id).stop();
+  });
+
+  afterAll(() => {
+    // 清理测试目录
+    try {
+      rmSync(testDataDir, { recursive: true, force: true });
+    } catch {
+      // 忽略清理错误
+    }
+    delete process.env.TEST_DATA_DIR;
   });
 
   describe("Agent 启动流程", () => {

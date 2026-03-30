@@ -10,7 +10,15 @@
  * 6. 过期检查 - 5分钟后任务自动失效
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, afterAll } from "vitest";
+import { tmpdir } from "os";
+import { mkdtempSync, rmSync } from "fs";
+import { join } from "path";
+
+// 在导入任何模块前设置测试目录
+const testDataDir = mkdtempSync(join(tmpdir(), "task-confirmation-test-"));
+process.env.TEST_DATA_DIR = testDataDir;
+
 import { TaskService, getTaskService, isTaskConfirmation, isTaskCancellation } from "../src/services/task-service.js";
 import { initializeContextSystem, getContextManager, resetContextSystem } from "../src/context/index.js";
 import { ConversationState, type SessionContext, type PendingScheduledTask } from "../src/context/types.js";
@@ -40,6 +48,16 @@ describe("TaskService", () => {
   
   afterEach(() => {
     resetContextSystem();
+  });
+
+  afterAll(() => {
+    // 清理测试目录
+    try {
+      rmSync(testDataDir, { recursive: true, force: true });
+    } catch {
+      // 忽略清理错误
+    }
+    delete process.env.TEST_DATA_DIR;
   });
 
   describe("prepareCreate", () => {
