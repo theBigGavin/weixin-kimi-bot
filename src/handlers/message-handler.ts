@@ -58,6 +58,7 @@ import { sendTextReply, getUserWorkspace, showTyping } from "./message-utils.js"
 import { handleAgentCommandWithContext } from "./command-context.js";
 import type { AgentSession, PendingTask } from "./types.js";
 import { performSmartSearch, checkSearxngHealth } from "../services/searxng.js";
+import { getTaskService, isTaskConfirmation, isTaskCancellation } from "../services/task-service.js";
 
 // 外部传入的 contextSystem
 interface ContextSystem {
@@ -107,7 +108,44 @@ export async function handleMessageWithContext(
 
   console.log(`  📊 会话状态: ${translateState(sessionContext.state.current)}, 消息数: ${sessionContext.messages.length}`);
 
-  // ============ 命令处理 ============
+  // ============ 阶段 1: 检查待确认的定时任务（最高优先级）============
+  const taskService = getTaskService(session.config.id);
+  const hasPendingTask = taskService.hasPendingTask(sessionContext);
+  
+  if (hasPendingTask) {
+    const confirmationIntent = taskService.checkConfirmationIntent(text);
+    
+    if (confirmationIntent === 'confirm') {
+      console.log(`  ✅ 用户确认创建定时任务`);
+      const result = await taskService.finalizeCreate(sessionContext);
+      await sendTextReply(session.api, fromUser, contextToken, result.message);
+      console.log(`  📤 任务创建结果已发送: ${result.success ? '成功' : '失败'}`);
+      return;
+    }
+    
+    if (confirmationIntent === 'cancel') {
+      console.log(`  ❌ 用户取消创建定时任务`);
+      const result = await taskService.cancelCreate(sessionContext);
+      await sendTextReply(session.api, fromUser, contextToken, result.message);
+      console.log(`  📤 取消结果已发送`);
+      return;
+    }
+    
+    // 有待确认任务，但输入不是确认/取消，提示用户
+    const preview = taskService.getPreviewInfo(sessionContext);
+    if (preview) {
+      const reminderMsg = `⏳ 您有一个待确认的定时任务：\n\n` +
+        `**${preview.name}**\n` +
+        `执行时间: ${preview.description}\n` +
+        `Crontab: \`${preview.cron}\`\n\n` +
+        `请回复 **确认** 或 **取消**，或发送其他命令继续。`;
+      await sendTextReply(session.api, fromUser, contextToken, reminderMsg);
+      console.log(`  📤 任务确认提醒已发送`);
+      return;
+    }
+  }
+
+  // ============ 阶段 2: 命令处理 ============
   const commandInfo = parseCommand(text);
   if (commandInfo) {
     console.log(`  📝 检测到命令: /${commandInfo.command}`);

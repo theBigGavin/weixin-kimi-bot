@@ -36,6 +36,35 @@ export enum ConversationState {
 }
 
 /**
+ * 待确认的定时任务
+ * 存储在 Session 状态中，用于处理 "确认"/"取消" 流程
+ */
+export interface PendingScheduledTask {
+  /** 任务ID */
+  id: string;
+  /** 任务名称 */
+  name: string;
+  /** Crontab 表达式 */
+  cron: string;
+  /** 执行命令 */
+  command: string;
+  /** 执行时间描述 */
+  description: string;
+  /** 所属Agent */
+  agentId: string;
+  /** 用户ID */
+  userId: string;
+  /** 聊天ID */
+  chatId: string;
+  /** 上下文Token */
+  contextToken: string;
+  /** 创建时间 */
+  createdAt: number;
+  /** 过期时间 */
+  expiresAt: number;
+}
+
+/**
  * 状态上下文
  * 包含当前状态及相关的上下文数据
  */
@@ -51,7 +80,12 @@ export interface StateContext {
   /** 期望的输入类型 */
   expectedInput?: ExpectedInputType;
   /** 状态相关数据 */
-  data?: Record<string, any>;
+  data?: {
+    /** 待确认的定时任务 */
+    pendingScheduledTask?: PendingScheduledTask;
+    /** 其他状态数据 */
+    [key: string]: any;
+  };
 }
 
 /**

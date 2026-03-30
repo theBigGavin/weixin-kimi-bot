@@ -28,3 +28,11 @@ export {
   initializeAgents,
   type SessionManagerOptions,
 } from "./session-manager.js";
+
+export {
+  TaskService,
+  getTaskService,
+  isTaskConfirmation,
+  isTaskCancellation,
+  type PendingScheduledTask,
+} from "./task-service.js";

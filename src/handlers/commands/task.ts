@@ -6,18 +6,20 @@ import type { CommandContext, PendingTaskInfo } from "../types.js";
 import { getScheduler, formatCronDescription, parseNaturalLanguageToCron } from "../../scheduler.js";
 import { getWorkflowManager } from "../../workflow/manager.js";
 import { getWorkflowScheduler } from "../../workflow/scheduler-integration.js";
+import { getTaskService } from "../../services/task-service.js";
 import type { PendingWorkflowInfo } from "./workflow.js";
 
 export async function taskHandler(
   args: string,
   context: CommandContext,
-  pendingTasks: Map<string, PendingTaskInfo>,
+  pendingTasks: Map<string, PendingTaskInfo>,  // 保持兼容，但不再使用
   pendingWorkflows?: Map<string, PendingWorkflowInfo>,
 ): Promise<string> {
-  const { session, fromUser, contextToken } = context;
+  const { session, fromUser, contextToken, sessionContext } = context;
   const scheduler = getScheduler(session.config.id);
   const workflowManager = getWorkflowManager(session.config.id, session.config.workspace.path);
   const workflowScheduler = getWorkflowScheduler(session.config.id, session.config.workspace.path);
+  const taskService = getTaskService(session.config.id);
 
   if (args.trim() === "list" || args.trim() === "") {
     const tasks = scheduler.getAllTasks();
@@ -81,7 +83,7 @@ export async function taskHandler(
         // 添加到调度
         workflowScheduler.scheduleWorkflow(instance);
 
-        // 保存到 pending
+        // 保存到 pending（工作流保持原有方式，因为 workflow 有独立的确认机制）
         pendingWorkflows.set(fromUser, {
           workflowInfo: {
             name: info.name,
@@ -121,7 +123,7 @@ export async function taskHandler(
       }
     }
 
-    // 创建简单任务
+    // 创建简单任务（使用 TaskService）
     try {
       const taskInfo = await parseNaturalLanguageToCron(
         description,
@@ -129,13 +131,18 @@ export async function taskHandler(
         session.config.workspace.path,
       );
 
-      pendingTasks.set(fromUser, {
+      // 使用 TaskService 准备创建任务（存入 Session 状态）
+      if (!sessionContext) {
+        return "❌ 当前会话上下文不可用，请重试";
+      }
+
+      await taskService.prepareCreate(
+        sessionContext,
         taskInfo,
-        agentId: session.config.id,
-        chatId: fromUser,
-        contextToken,
-        expiresAt: Date.now() + 5 * 60 * 1000,
-      });
+        fromUser,
+        fromUser,
+        contextToken
+      );
 
       return `🤖 解析结果\n\n任务名称: ${taskInfo.name}\n执行时间: ${taskInfo.description}\nCrontab: \`${taskInfo.cron}\`\n执行命令: ${taskInfo.command.substring(0, 50)}${taskInfo.command.length > 50 ? "..." : ""}\n\n回复 "确认" 创建此任务，或 "取消" 放弃\n(5分钟内有效)`;
     } catch (e) {
