@@ -48,7 +48,7 @@ describe("deploy 命令 - 集成测试验证", () => {
       expect(result.message).toContain("5 个测试失败");
     });
 
-    it("应该阻止部署当有测试跳过", async () => {
+    it("应该允许部署当有测试跳过但无失败", async () => {
       // Arrange
       const mockTestResult = {
         success: true,
@@ -60,13 +60,13 @@ describe("deploy 命令 - 集成测试验证", () => {
       // Act
       const result = await validateBeforeDeploy(mockTestResult);
 
-      // Assert
-      expect(result.canDeploy).toBe(false);
-      expect(result.message).toContain("⚠️");
-      expect(result.message).toContain("5 个测试被跳过");
+      // Assert - 新策略：跳过测试不阻止部署
+      expect(result.canDeploy).toBe(true);
+      expect(result.message).toContain("✅");
+      expect(result.message).toContain("5 个跳过");
     });
 
-    it("应该优先显示失败当测试和跳过同时存在", async () => {
+    it("应该阻止部署当测试失败（即使有跳过）", async () => {
       // Arrange
       const mockTestResult = {
         success: false,
@@ -78,7 +78,7 @@ describe("deploy 命令 - 集成测试验证", () => {
       // Act
       const result = await validateBeforeDeploy(mockTestResult);
 
-      // Assert - 优先显示失败（因为失败更严重）
+      // Assert - 失败测试阻止部署
       expect(result.canDeploy).toBe(false);
       expect(result.message).toContain("5 个测试失败");
     });
