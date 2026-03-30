@@ -233,11 +233,11 @@ export class LongTaskManager {
   }
 
   /**
-   * 获取用户的所有任务
+   * 获取用户的所有活跃任务（pending 或 running）
    */
   getUserTasks(userId: string): LongTask[] {
     return Array.from(this.tasks.values())
-      .filter(t => t.userId === userId)
+      .filter(t => t.userId === userId && (t.status === "pending" || t.status === "running"))
       .sort((a, b) => b.createdAt - a.createdAt);
   }
 
