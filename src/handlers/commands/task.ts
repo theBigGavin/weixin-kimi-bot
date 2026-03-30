@@ -133,7 +133,18 @@ export async function taskHandler(
 
       // 使用 TaskService 准备创建任务（存入 Session 状态）
       if (!sessionContext) {
-        return "❌ 当前会话上下文不可用，请重试";
+        // 没有会话上下文时，直接创建任务（无需确认）
+        const scheduler = getScheduler(session.config.id);
+        const task = scheduler.addTask({
+          name: taskInfo.name,
+          cron: taskInfo.cron,
+          command: taskInfo.command,
+          chatId: fromUser,
+          contextToken: contextToken,
+          enabled: true,
+        });
+
+        return `✅ 任务已创建\n\n任务名称: ${taskInfo.name}\n任务ID: \`${task.id}\`\n执行时间: ${taskInfo.description}\nCrontab: \`${taskInfo.cron}\`\n执行命令: ${taskInfo.command.substring(0, 50)}${taskInfo.command.length > 50 ? "..." : ""}`;
       }
 
       await taskService.prepareCreate(
