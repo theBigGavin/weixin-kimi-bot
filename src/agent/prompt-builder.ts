@@ -214,17 +214,50 @@ export function buildHelpPrompt(runtime: AgentRuntime): string {
 **基础命令：**
 /help - 显示此帮助
 /reset - 重置对话上下文
-/session status - 查看当前 session 状态
 /status - 查看Agent状态
+/prompt - 预览系统提示词
+/ver - 查看Bot版本信息
+
+**记忆与模板：**
 /template - 查看/切换能力模板
 /memory - 管理长期记忆
-/task - 定时任务管理
+
+**任务管理：**
+/task - 定时任务管理 (list/create/delete/toggle)
 /longtask - 耗时任务管理(支持进度报告、后台执行)
 /flowtask - 可靠任务流(结构化计划执行)
+/workflow - 工作流管理 - 复杂自动化任务编排
+
+**智能路由：**
 /route - 智能任务路由(分析任务并选择执行模式)
 /auto - 开关自动路由(on/off)
+
+**会话与上下文：**
+/session - 查看 Session 状态
+/context - 查看上下文详情
+
+**部署：**
 /deploy - 部署Bot (patch/minor/major)
-/ver - 查看Bot版本信息
+
+**/prompt 详细说明：**
+- /prompt - 预览当前使用的完整系统提示词
+- 显示格式化的系统提示词，包含能力模板、记忆、项目空间等
+
+**/session 详细说明：**
+- /session - 查看当前会话状态
+- 显示当前对话轮次、上下文状态等信息
+
+**/context 详细说明：**
+- /context - 查看上下文详情
+- /context options - 查看当前活跃的选项
+- 显示上下文感知系统的详细状态
+
+**/workflow 详细说明：**
+- /workflow list - 列出所有工作流
+- /workflow status <id> - 查看工作流状态
+- /workflow start <id> - 启动工作流
+- /workflow stop <id> - 停止工作流
+- 用于编排复杂的自动化任务
 
 **/longtask 详细说明：**
 - /longtask <描述> - 提交耗时任务(如重构、批量处理)
