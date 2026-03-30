@@ -4,7 +4,13 @@
  * 测试消息接收、处理和回复的完整流程
  */
 
-import { describe, it, expect, beforeEach, vi, beforeAll } from "vitest";
+import { describe, it, expect, beforeEach, vi, beforeAll, afterAll } from "vitest";
+import { tmpdir } from "os";
+import { mkdtempSync, rmSync } from "fs";
+import { join } from "path";
+
+const testDataDir = mkdtempSync(join(tmpdir(), "msg-handling-test-"));
+process.env.TEST_DATA_DIR = testDataDir;
 import type { WeixinMessage } from "../../src/ilink/types.js";
 import { MessageType } from "../../src/ilink/types.js";
 import { extractText, parseCommand } from "../../src/utils/index.js";
@@ -366,4 +372,11 @@ describe("消息处理集成测试", () => {
       expect(result.success).toBe(true);
     });
   });
+});
+
+afterAll(() => {
+  try {
+    rmSync(testDataDir, { recursive: true, force: true });
+  } catch {}
+  delete process.env.TEST_DATA_DIR;
 });

@@ -4,7 +4,15 @@
  * 测试系统在各种异常情况下的行为
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
+import { tmpdir } from "os";
+import { mkdtempSync, rmSync } from "fs";
+import { join } from "path";
+
+// 设置测试目录
+const testDataDir = mkdtempSync(join(tmpdir(), "error-recovery-test-"));
+process.env.TEST_DATA_DIR = testDataDir;
+
 import type { WeixinMessage } from "../../src/ilink/types.js";
 import { MessageType } from "../../src/ilink/types.js";
 import { extractText, parseCommand, chunkMessage, MAX_MSG_LEN } from "../../src/utils/index.js";
@@ -364,4 +372,14 @@ describe("错误恢复和边界情况集成测试", () => {
       expect(intent2.type).toBeDefined();
     });
   });
+});
+
+// 清理测试目录
+afterAll(() => {
+  try {
+    rmSync(testDataDir, { recursive: true, force: true });
+  } catch {
+    // 忽略清理错误
+  }
+  delete process.env.TEST_DATA_DIR;
 });
