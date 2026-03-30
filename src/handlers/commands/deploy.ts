@@ -7,14 +7,149 @@ import { spawn } from "node:child_process";
 import { getLongTaskManager } from "../../longtask/manager.js";
 import { saveRestartInfo } from "../../services/restart-notify.js";
 import { sendTextReply } from "../message-utils.js";
+import { execSync } from "node:child_process";
+
+/**
+ * 测试结果类型
+ */
+export interface TestResult {
+  success: boolean;
+  passed: number;
+  failed: number;
+  skipped: number;
+  failedTests?: Array<{ name: string; error: string }>;
+}
+
+/**
+ * 部署验证结果
+ */
+export interface DeployValidationResult {
+  canDeploy: boolean;
+  message: string;
+  details?: TestResult;
+}
+
+/**
+ * 运行集成测试
+ */
+export async function runIntegrationTests(): Promise<TestResult> {
+  try {
+    console.log("[Deploy] 运行集成测试...");
+    
+    // 运行测试并捕获输出
+    const output = execSync("npm test 2>&1", { 
+      encoding: "utf-8",
+      timeout: 120000, // 2分钟超时
+      cwd: process.cwd(),
+    });
+
+    // 解析测试结果
+    const passedMatch = output.match(/Tests\s+(\d+)\s+passed/);
+    const failedMatch = output.match(/Tests\s+(\d+)\s+failed/);
+    const skippedMatch = output.match(/(\d+)\s+skipped/);
+
+    const passed = passedMatch ? parseInt(passedMatch[1], 10) : 0;
+    const failed = failedMatch ? parseInt(failedMatch[1], 10) : 0;
+    const skipped = skippedMatch ? parseInt(skippedMatch[1], 10) : 0;
+
+    return {
+      success: failed === 0,
+      passed,
+      failed,
+      skipped,
+    };
+  } catch (error) {
+    // 测试失败时也会抛出错误
+    const output = error instanceof Error ? error.message : String(error);
+    
+    const passedMatch = output.match(/Tests\s+(\d+)\s+passed/);
+    const failedMatch = output.match(/Tests\s+(\d+)\s+failed/);
+    const skippedMatch = output.match(/(\d+)\s+skipped/);
+
+    const passed = passedMatch ? parseInt(passedMatch[1], 10) : 0;
+    const failed = failedMatch ? parseInt(failedMatch[1], 10) : 0;
+    const skipped = skippedMatch ? parseInt(skippedMatch[1], 10) : 0;
+
+    return {
+      success: false,
+      passed,
+      failed,
+      skipped,
+    };
+  }
+}
+
+/**
+ * 验证是否可以部署
+ */
+export async function validateBeforeDeploy(
+  testResult: TestResult | null,
+  force: boolean = false
+): Promise<DeployValidationResult> {
+  // 如果没有测试结果
+  if (!testResult) {
+    if (force) {
+      return {
+        canDeploy: true,
+        message: "⚠️ 强制部署：无法获取测试结果，跳过验证",
+      };
+    }
+    return {
+      canDeploy: false,
+      message: "❌ 部署被拒绝：无法获取测试结果，请确保测试可以正常运行",
+    };
+  }
+
+  const { passed, failed, skipped } = testResult;
+  const total = passed + failed + skipped;
+
+  // 如果有测试失败
+  if (failed > 0) {
+    return {
+      canDeploy: false,
+      message: `❌ 部署被拒绝：${failed} 个测试失败（共 ${total} 个测试）`,
+      details: testResult,
+    };
+  }
+
+  // 如果有测试被跳过
+  if (skipped > 0) {
+    return {
+      canDeploy: false,
+      message: `⚠️ 部署被拒绝：${skipped} 个测试被跳过（共 ${total} 个测试）\n跳过项：${skipped} 个`,
+      details: testResult,
+    };
+  }
+
+  // 所有测试通过
+  return {
+    canDeploy: true,
+    message: `✅ 测试验证通过：${passed} 个测试全部通过`,
+    details: testResult,
+  };
+}
 
 export async function deployHandler(args: string, context: CommandContext): Promise<string> {
   const { session, fromUser, contextToken } = context;
 
   const versionType = args.trim() || "patch";
   if (!["patch", "minor", "major"].includes(versionType)) {
-    return `❌ 无效的版本类型: ${versionType}\n\n用法:\n- \`/deploy\` 或 \`/deploy patch\` - 补丁版本\n- \`/deploy minor\` - 次版本\n- \`/deploy major\` - 主版本`;
+    return `❌ 无效的版本类型: ${versionType}\n\n用法:\n- \`/deploy\` 或 \`/deploy patch\` - 补丁版本\n- \`/deploy minor\` - 次版本\n- \`/deploy major\` - 主版本\n\n⚠️ 部署前会自动运行测试验证，测试通过或跳过项存在时将阻止部署`;
   }
+
+  // 检查是否强制部署（使用 --force 或 -f 标志）
+  const isForce = args.includes("--force") || args.includes("-f");
+
+  // 运行集成测试验证
+  const testResult = await runIntegrationTests();
+  const validation = await validateBeforeDeploy(testResult, isForce);
+
+  if (!validation.canDeploy) {
+    return `❌ **部署被拒绝**\n\n${validation.message}\n\n请先修复测试问题后再部署。\n\n如需强制部署（不推荐），请使用：\n\`/deploy ${versionType} --force\``;
+  }
+
+  // 测试通过，继续部署
+  console.log(`[Deploy] ${validation.message}`);
 
   const projectPath = session.config.projectSpace?.path || process.cwd();
 
