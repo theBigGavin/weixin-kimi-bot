@@ -278,6 +278,20 @@ ${runtime.config.features.scheduledTasks ? "✅" : "❌"} 定时任务
 export function buildStatusPrompt(runtime: AgentRuntime): string {
   const config = runtime.config;
   const stats = config.stats;
+  const isFounder = config.type === "founder";
+
+  // ProjectSpace 信息（仅创始Agent显示）
+  const projectSpaceInfo = isFounder && config.projectSpace ? `
+
+**项目空间 (ProjectSpace)：**
+类型: 🏗️ 创始Agent
+项目路径: \`${config.projectSpace.path}\`
+${config.projectSpace.repository ? `代码仓库: ${config.projectSpace.repository}` : ""}
+${config.projectSpace.description ? `项目描述: ${config.projectSpace.description}` : ""}
+${config.projectSpace.rules ? `维护规则:
+${config.projectSpace.rules.gitRequired ? "  - ✅ 必须使用 Git" : ""}
+${config.projectSpace.rules.noTemporaryFiles ? "  - ✅ 禁止临时文件" : ""}
+${config.projectSpace.rules.ciCdEnabled ? "  - ✅ 启用 CI/CD" : ""}` : ""}` : "";
 
   return `📊 **Agent状态**
 
@@ -285,6 +299,7 @@ export function buildStatusPrompt(runtime: AgentRuntime): string {
 名称: ${config.name}
 ID: \`${config.id}\`
 角色: ${runtime.template.name} ${runtime.template.icon}
+类型: ${isFounder ? "🏗️ 创始Agent" : "🤖 普通助手"}
 创建时间: ${new Date(config.createdAt).toLocaleDateString("zh-CN")}
 
 **AI配置：**
@@ -304,5 +319,5 @@ ${stats.lastActiveAt ? `最后活跃: ${new Date(stats.lastActiveAt).toLocaleStr
 记忆功能: ${config.memory.enabled ? "✅ 启用" : "❌ 禁用"}
 
 **工作目录：**
-\`${config.workspace.path}\``;
+\`${config.workspace.path}\`${projectSpaceInfo}`;
 }
