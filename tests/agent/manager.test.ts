@@ -4,35 +4,38 @@
  * 测试 Agent 的创建、加载、更新和删除功能
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
 import { tmpdir } from "os";
 import { mkdtempSync, rmSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
-import { AgentManager } from "../../src/agent/manager.js";
-import type { AgentConfig } from "../../src/agent/types.js";
 
-// 创建临时测试目录
+// 在导入 manager 前设置测试目录
 const testBaseDir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
+process.env.TEST_AGENT_DIR = testBaseDir;
 
-// Mock BASE_DIR
-vi.mock("../../src/agent/manager.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../src/agent/manager.js")>();
-  return {
-    ...actual,
-  };
-});
+// 动态导入 manager，确保环境变量已设置
+const { AgentManager } = await import("../../src/agent/manager.js");
+import type { AgentConfig } from "../../src/agent/types.js";
 
 describe("AgentManager", () => {
   let manager: AgentManager;
 
   beforeEach(async () => {
     manager = new AgentManager();
-    // 设置测试目录
-    process.env.TEST_AGENT_DIR = testBaseDir;
   });
 
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterAll(() => {
+    // 清理测试目录
+    try {
+      rmSync(testBaseDir, { recursive: true, force: true });
+    } catch {
+      // 忽略清理错误
+    }
+    delete process.env.TEST_AGENT_DIR;
   });
 
   describe("createAgent", () => {
@@ -222,17 +225,5 @@ describe("AgentManager", () => {
       // Assert
       expect(result).toBeUndefined();
     });
-  });
-});
-
-// 清理
-describe("cleanup", () => {
-  it("should cleanup test directory", () => {
-    try {
-      rmSync(testBaseDir, { recursive: true, force: true });
-    } catch {
-      // 忽略清理错误
-    }
-    expect(true).toBe(true);
   });
 });

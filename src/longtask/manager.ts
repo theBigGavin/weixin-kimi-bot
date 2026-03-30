@@ -45,7 +45,8 @@ export class LongTaskManager {
   private initialized = false;
 
   constructor(agentId: string, options: Partial<LongTaskManagerOptions> = {}) {
-    this.dataDir = join(process.env.HOME || "/tmp", ".weixin-kimi-bot", "agents", agentId, "longtask");
+    const baseDir = process.env.TEST_DATA_DIR || join(process.env.HOME || "/tmp", ".weixin-kimi-bot");
+    this.dataDir = join(baseDir, "agents", agentId, "longtask");
     
     // 确保目录存在
     mkdir(this.dataDir, { recursive: true }).catch(() => {});

@@ -7,7 +7,15 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-const BASE_DIR = path.join(os.homedir(), ".weixin-kimi-bot");
+function getBaseDir(): string {
+  // 允许通过环境变量配置存储目录（用于测试）
+  if (process.env.TEST_DATA_DIR) {
+    return process.env.TEST_DATA_DIR;
+  }
+  return path.join(os.homedir(), ".weixin-kimi-bot");
+}
+
+const BASE_DIR = getBaseDir();
 
 // 获取当前活跃的Agent ID（从环境变量）
 function getActiveAgentId(): string | null {
@@ -312,13 +320,6 @@ function cleanupPendingTasks(): void {
 }
 
 // ============ 工具函数 ============
-
-/**
- * 获取基础目录
- */
-export function getBaseDir(): string {
-  return BASE_DIR;
-}
 
 /**
  * 获取Agent数据目录

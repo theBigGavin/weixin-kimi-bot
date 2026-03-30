@@ -12,7 +12,15 @@ import type { AgentConfig, AgentRuntime, CapabilityTemplate, AgentMemory } from 
 import { getTemplateById, getDefaultTemplate } from "../templates/definitions.js";
 import { customTemplateManager } from "../templates/custom-manager.js";
 
-const BASE_DIR = join(homedir(), ".weixin-kimi-bot", "agents");
+function getBaseDir(): string {
+  // 允许通过环境变量配置存储目录（用于测试）
+  if (process.env.TEST_AGENT_DIR) {
+    return join(process.env.TEST_AGENT_DIR, "agents");
+  }
+  return join(homedir(), ".weixin-kimi-bot", "agents");
+}
+
+const BASE_DIR = getBaseDir();
 
 /**
  * 生成Agent ID

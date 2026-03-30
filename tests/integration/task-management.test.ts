@@ -4,12 +4,25 @@
  * 测试定时任务、长任务和流程任务的管理
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { getScheduler, formatCronDescription, parseNaturalLanguageToCron, getNextRunTime } from "../../src/scheduler.js";
-import { getLongTaskManagerSync, formatProgressMessage } from "../../src/longtask/manager.js";
-import { getFlowTaskManager, formatProgressMessage as formatFlowProgress } from "../../src/flowtask/manager.js";
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
+import { tmpdir } from "os";
+import { mkdtempSync, rmSync } from "fs";
+import { join } from "path";
 import type { LongTask, ProgressInfo as LongTaskProgress } from "../../src/longtask/types.js";
 import type { FlowTask, ProgressInfo as FlowTaskProgress } from "../../src/flowtask/types.js";
+
+// 在导入任何模块前设置测试目录
+const testDataDir = mkdtempSync(join(tmpdir(), "task-management-test-"));
+process.env.TEST_DATA_DIR = testDataDir;
+
+// 动态导入模块，确保环境变量已设置
+const schedulerModule = await import("../../src/scheduler.js");
+const longtaskModule = await import("../../src/longtask/manager.js");
+const flowtaskModule = await import("../../src/flowtask/manager.js");
+
+const { getScheduler, formatCronDescription, parseNaturalLanguageToCron, getNextRunTime } = schedulerModule;
+const { getLongTaskManagerSync, formatProgressMessage } = longtaskModule;
+const { getFlowTaskManager, formatProgressMessage: formatFlowProgress } = flowtaskModule;
 
 describe("任务管理集成测试", () => {
   let agentId: string;
@@ -22,6 +35,16 @@ describe("任务管理集成测试", () => {
   afterEach(() => {
     // 清理任务管理器
     getScheduler(agentId).stop();
+  });
+
+  afterAll(() => {
+    // 清理测试目录
+    try {
+      rmSync(testDataDir, { recursive: true, force: true });
+    } catch {
+      // 忽略清理错误
+    }
+    delete process.env.TEST_DATA_DIR;
   });
 
   describe("定时任务 (Scheduler)", () => {
