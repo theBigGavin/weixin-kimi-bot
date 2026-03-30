@@ -129,44 +129,7 @@ export async function validateBeforeDeploy(
   const { passed, failed, skipped } = testResult;
   const total = passed + failed + skipped;
 
-  // 生产环境特殊要求
-  if (environment === "production") {
-    // 生产环境：测试数量不能太少（至少50个）
-    if (total < 50) {
-      return {
-        canDeploy: false,
-        message: `❌ [${environment}] 部署被拒绝：测试数量不足（${total} 个，要求至少50个）`,
-        details: testResult,
-      };
-    }
-
-    // 生产环境：不允许有任何失败
-    if (failed > 0) {
-      return {
-        canDeploy: false,
-        message: `❌ [${environment}] 部署被拒绝：${failed} 个测试失败（共 ${total} 个测试）`,
-        details: testResult,
-      };
-    }
-
-    // 生产环境：不允许有任何跳过
-    if (skipped > 0) {
-      return {
-        canDeploy: false,
-        message: `❌ [${environment}] 部署被拒绝：${skipped} 个测试被跳过（生产环境要求100%测试通过）`,
-        details: testResult,
-      };
-    }
-
-    return {
-      canDeploy: true,
-      message: `✅ [${environment}] 测试验证通过：${passed} 个测试全部通过（100%）`,
-      details: testResult,
-    };
-  }
-
-  // 非生产环境（staging/development）
-  // 如果有测试失败
+  // 任何环境都不允许有失败测试
   if (failed > 0) {
     return {
       canDeploy: false,
@@ -175,15 +138,40 @@ export async function validateBeforeDeploy(
     };
   }
 
-  // 如果有测试被跳过，显示警告但不阻止部署
-  if (skipped > 0) {
-    console.log(`[Deploy] [${environment}] 警告：${skipped} 个测试被跳过，但无失败测试，允许部署`);
+  // 开发环境：允许有跳过（方便调试）
+  if (environment === "development") {
+    if (skipped > 0) {
+      console.log(`[Deploy] [${environment}] 警告：${skipped} 个测试被跳过，但无失败测试，允许部署`);
+    }
+    return {
+      canDeploy: true,
+      message: `✅ [${environment}] 测试验证通过：${passed} 个测试通过，${skipped} 个跳过`,
+      details: testResult,
+    };
   }
 
-  // 所有测试通过（允许有跳过）
+  // production 和 staging：不允许有任何跳过（严格要求）
+  if (skipped > 0) {
+    return {
+      canDeploy: false,
+      message: `❌ [${environment}] 部署被拒绝：${skipped} 个测试被跳过（${environment} 环境要求100%测试通过）`,
+      details: testResult,
+    };
+  }
+
+  // production 额外要求：测试数量不能太少
+  if (environment === "production" && total < 50) {
+    return {
+      canDeploy: false,
+      message: `❌ [${environment}] 部署被拒绝：测试数量不足（${total} 个，要求至少50个）`,
+      details: testResult,
+    };
+  }
+
+  // 所有测试通过
   return {
     canDeploy: true,
-    message: `✅ [${environment}] 测试验证通过：${passed} 个测试通过，${skipped} 个跳过，${failed} 个失败`,
+    message: `✅ [${environment}] 测试验证通过：${passed} 个测试全部通过（100%）`,
     details: testResult,
   };
 }

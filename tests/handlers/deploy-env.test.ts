@@ -91,20 +91,21 @@ describe("部署环境识别", () => {
 
       // Assert
       expect(result.canDeploy).toBe(false);
-      expect(result.message).toContain("生产环境");
+      expect(result.message).toContain("production");
       expect(result.message).toContain("跳过");
     });
 
-    it("staging 环境：允许有跳过测试", async () => {
+    it("staging 环境：不允许有跳过测试", async () => {
       // Arrange
       process.env.DEPLOY_ENV = "staging";
 
       // Act
       const result = await validateBeforeDeploy(mockTestResult, false, "staging");
 
-      // Assert
-      expect(result.canDeploy).toBe(true);
+      // Assert - staging 不允许跳过
+      expect(result.canDeploy).toBe(false);
       expect(result.message).toContain("staging");
+      expect(result.message).toContain("跳过");
     });
 
     it("development 环境：允许有跳过测试", async () => {
