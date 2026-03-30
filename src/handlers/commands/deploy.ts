@@ -224,6 +224,19 @@ export async function deployHandler(args: string, context: CommandContext): Prom
     maxTurns: 1,
   });
 
+  // ========== 最低保障机制：确保即使通知逻辑失败也能重启 ==========
+  // 设置一个绝对定时器，在任务提交后 60 秒强制重启
+  // 这是为了防止 /deploy 命令自身的 bug 导致无法完成部署
+  console.log(`[Deploy] 设置最低保障重启定时器（60秒后）...`);
+  const failSafeTimeout = setTimeout(() => {
+    console.log(`[Deploy] ⚠️ 最低保障机制触发：强制重启服务...`);
+    spawn("pm2", ["restart", "weixin-kimi-bot"], {
+      cwd: projectPath,
+      stdio: "ignore",
+      detached: true,
+    }).unref();
+  }, 60000);
+
   // 监听部署任务完成
   let checkCount = 0;
   const maxChecks = 360; // 最多检查30分钟 (360 * 5秒 = 1800秒)
@@ -234,7 +247,8 @@ export async function deployHandler(args: string, context: CommandContext): Prom
     
     if (!currentTask) {
       console.error(`[Deploy] 任务 ${task.id} 不存在`);
-      await sendTextReply(session.api, fromUser, contextToken, `❌ **部署失败**\n\n任务被意外删除`);
+      // 取消最低保障，让 LongTask 的 onComplete 处理
+      clearTimeout(failSafeTimeout);
       return;
     }
     
@@ -244,12 +258,15 @@ export async function deployHandler(args: string, context: CommandContext): Prom
         setTimeout(checkTaskStatus, 5000);
       } else {
         console.error(`[Deploy] 任务 ${task.id} 超时`);
+        clearTimeout(failSafeTimeout);
         await sendTextReply(session.api, fromUser, contextToken, `❌ **部署失败**\n\n任务执行超时（超过30分钟）`);
       }
       return;
     }
 
-    // 任务已完成（成功或失败）
+    // 任务已完成（成功或失败）- 取消最低保障
+    clearTimeout(failSafeTimeout);
+
     if (currentTask.status === "completed") {
       const result = currentTask.result || "";
       const releaseMatch = result.match(/🎉 版本 v(\d+\.\d+\.\d+)/);

@@ -207,5 +207,25 @@ describe("deploy 命令 - 集成测试验证", () => {
       expect(deploySource).toContain("// 立即开始检查（任务可能很快完成）");
       expect(deploySource).toMatch(/checkTaskStatus\(\)/);
     });
+
+    it("应该有最低保障机制（60秒强制重启）", async () => {
+      // 读取源代码验证
+      const fs = await import("fs");
+      const path = await import("path");
+      const { fileURLToPath } = await import("url");
+      
+      const __dirname = path.dirname(fileURLToPath(import.meta.url));
+      const deploySource = fs.readFileSync(
+        path.join(__dirname, "../../src/handlers/commands/deploy.ts"),
+        "utf-8"
+      );
+      
+      // 验证有最低保障机制
+      expect(deploySource).toContain("最低保障机制");
+      expect(deploySource).toContain("failSafeTimeout");
+      expect(deploySource).toContain("60000"); // 60秒
+      expect(deploySource).toContain("clearTimeout(failSafeTimeout)");
+      expect(deploySource).toContain("强制重启服务");
+    });
   });
 });
