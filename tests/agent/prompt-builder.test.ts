@@ -5,7 +5,8 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { buildStatusPrompt } from "../../src/agent/prompt-builder.js";
+import { buildStatusPrompt, buildHelpPrompt } from "../../src/agent/prompt-builder.js";
+import { getCommandList } from "../../src/handlers/command-handler.js";
 import type { AgentRuntime } from "../../src/agent/types.js";
 
 // 创建测试用的 AgentRuntime
@@ -174,5 +175,46 @@ describe("buildStatusPrompt", () => {
 
     expect(prompt).not.toContain("项目空间");
     expect(prompt).not.toContain("ProjectSpace");
+  });
+});
+
+describe("buildHelpPrompt", () => {
+  it("应该包含所有系统支持的命令", () => {
+    const runtime = createTestRuntime();
+    const helpPrompt = buildHelpPrompt(runtime);
+    const commands = getCommandList();
+
+    // 验证所有命令都在帮助中
+    for (const cmd of Object.keys(commands)) {
+      expect(helpPrompt).toContain(`/${cmd}`);
+    }
+  });
+
+  it("应该包含基础命令", () => {
+    const runtime = createTestRuntime();
+    const helpPrompt = buildHelpPrompt(runtime);
+
+    expect(helpPrompt).toContain("/help");
+    expect(helpPrompt).toContain("/status");
+    expect(helpPrompt).toContain("/prompt");
+    expect(helpPrompt).toContain("/ver");
+  });
+
+  it("应该包含任务管理命令", () => {
+    const runtime = createTestRuntime();
+    const helpPrompt = buildHelpPrompt(runtime);
+
+    expect(helpPrompt).toContain("/task");
+    expect(helpPrompt).toContain("/longtask");
+    expect(helpPrompt).toContain("/flowtask");
+    expect(helpPrompt).toContain("/workflow");
+  });
+
+  it("应该包含上下文相关命令", () => {
+    const runtime = createTestRuntime();
+    const helpPrompt = buildHelpPrompt(runtime);
+
+    expect(helpPrompt).toContain("/session");
+    expect(helpPrompt).toContain("/context");
   });
 });
