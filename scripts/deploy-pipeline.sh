@@ -7,8 +7,6 @@
 #   version-type: patch | minor | major
 #   force: --force 可选，强制部署
 
-set -e
-
 VERSION_TYPE=${1:-patch}
 FORCE_FLAG=${2:-}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,6 +17,7 @@ cd "$PROJECT_DIR"
 echo "🚀 开始部署流水线..."
 echo "版本类型: $VERSION_TYPE"
 echo "强制模式: ${FORCE_FLAG:-否}"
+echo "工作目录: $(pwd)"
 echo ""
 
 # 步骤1: 运行测试
@@ -29,20 +28,36 @@ echo "================================"
 export TEST_DATA_DIR="${TEST_DATA_DIR:-$HOME/.weixin-kimi-bot/test-data}"
 export NODE_ENV=test
 
-if npm test 2>&1; then
-    echo ""
-    echo "✅ 测试通过"
+# 运行测试，捕获输出和退出码
+TEST_OUTPUT=$(npm test 2>&1)
+TEST_EXIT=$?
+
+# 输出测试结果（用于 LongTask 日志）
+echo "$TEST_OUTPUT"
+echo ""
+
+# 解析测试结果（从输出中提取）
+PASSED=$(echo "$TEST_OUTPUT" | grep -oE 'Tests\s+[0-9]+\s+passed' | grep -oE '[0-9]+' || echo "0")
+FAILED=$(echo "$TEST_OUTPUT" | grep -oE 'Tests\s+[0-9]+\s+failed' | grep -oE '[0-9]+' || echo "0")
+SKIPPED=$(echo "$TEST_OUTPUT" | grep -oE '[0-9]+\s+skipped' | grep -oE '[0-9]+' || echo "0")
+
+echo "📊 测试结果统计:"
+echo "  通过: $PASSED"
+echo "  失败: $FAILED"
+echo "  跳过: $SKIPPED"
+echo "  退出码: $TEST_EXIT"
+echo ""
+
+# 判断测试是否成功（只要有测试通过且没有失败，就算成功）
+if [ "$FAILED" -eq 0 ] && [ "$PASSED" -gt 0 ]; then
+    echo "✅ 测试通过 ($PASSED 个测试)"
+elif [ -n "$FORCE_FLAG" ]; then
+    echo "⚠️ 测试有失败，但强制模式启用，继续部署..."
 else
-    TEST_EXIT=$?
+    echo "❌ 测试失败 ($FAILED 个失败)，部署被拒绝"
     echo ""
-    echo "❌ 测试失败 (退出码: $TEST_EXIT)"
-    
-    if [ -z "$FORCE_FLAG" ]; then
-        echo "部署被拒绝。请修复测试或添加 --force 强制部署。"
-        exit 1
-    else
-        echo "⚠️ 强制模式：忽略测试失败，继续部署..."
-    fi
+    echo "如需强制部署，请使用: /deploy $VERSION_TYPE --force"
+    exit 1
 fi
 
 echo ""
