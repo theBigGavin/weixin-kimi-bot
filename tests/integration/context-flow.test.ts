@@ -4,7 +4,15 @@
  * 测试完整的对话流程
  */
 
-import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'vitest';
+import { tmpdir } from 'os';
+import { mkdtempSync, rmSync } from 'fs';
+import { join } from 'path';
+
+// 设置测试目录
+const testDataDir = mkdtempSync(join(tmpdir(), "context-flow-test-"));
+process.env.TEST_DATA_DIR = testDataDir;
+
 import { SessionContextManager } from '../../src/context/session-context.js';
 import { ContextPersistence } from '../../src/context/persistence.js';
 import { ConversationStateMachine } from '../../src/context/state-machine.js';
@@ -153,4 +161,14 @@ AI驱动的股票筛选
     // 清理测试数据
     await contextManager['persistence'].delete(userId, agentId);
   });
+});
+
+// 清理测试目录
+afterAll(() => {
+  try {
+    rmSync(testDataDir, { recursive: true, force: true });
+  } catch {
+    // 忽略清理错误
+  }
+  delete process.env.TEST_DATA_DIR;
 });
