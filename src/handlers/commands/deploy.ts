@@ -206,44 +206,34 @@ export async function deployHandler(args: string, context: CommandContext): Prom
   const { session, fromUser, contextToken } = context;
 
   const versionType = args.trim() || "patch";
-  if (!["patch", "minor", "major"].includes(versionType)) {
-    const currentEnv = getDeployEnvironment();
-    return `❌ 无效的版本类型: ${versionType}\n\n用法:\n- \`/deploy\` 或 \`/deploy patch\` - 补丁版本\n- \`/deploy minor\` - 次版本\n- \`/deploy major\` - 主版本\n\n⚠️ 部署前会自动运行测试验证\n当前环境: ${currentEnv}\n\n环境配置:\n- DEPLOY_ENV: ${process.env.DEPLOY_ENV || "未设置"}\n- NODE_ENV: ${process.env.NODE_ENV || "未设置"}`;
+  if (!["patch", "minor", "major", "patch --force", "minor --force", "major --force", "patch -f", "minor -f", "major -f"].includes(versionType.split(" ")[0])) {
+    // 检查基础版本类型
+    const baseType = versionType.split(" ")[0];
+    if (!["patch", "minor", "major"].includes(baseType)) {
+      const currentEnv = getDeployEnvironment();
+      return `❌ 无效的版本类型: ${versionType}\n\n用法:\n- \`/deploy\` 或 \`/deploy patch\` - 补丁版本\n- \`/deploy minor\` - 次版本\n- \`/deploy major\` - 主版本\n- \`/deploy patch --force\` - 强制部署（跳过测试）\n\n⚠️ 部署前会自动运行测试验证\n当前环境: ${currentEnv}`;
+    }
   }
 
-  // 检查是否强制部署（使用 --force 或 -f 标志）
+  // 检查是否强制部署
   const isForce = args.includes("--force") || args.includes("-f");
+  const baseVersionType = args.trim().split(" ")[0] || "patch";
 
   // 获取当前环境
   const environment = getDeployEnvironment();
-  console.log(`[Deploy] 当前环境: ${environment}`);
-
-  // 运行集成测试验证
-  const testResult = await runIntegrationTests();
-  const validation = await validateBeforeDeploy(testResult, isForce, environment);
-
-  if (!validation.canDeploy) {
-    return `❌ **部署被拒绝**\n\n${validation.message}\n\n请先修复测试问题后再部署。\n\n如需强制部署（不推荐），请使用：\n\`/deploy ${versionType} --force\``;
-  }
-
-  // 测试通过，继续部署
-  console.log(`[Deploy] ${validation.message}`);
-
-  // 清理测试产生的临时目录
-  console.log("[Deploy] 清理测试临时目录...");
-  const cleanupResult = cleanupTestTempDirs();
-  console.log(`[Deploy] 已清理 ${cleanupResult.count} 个临时目录`);
+  console.log(`[Deploy] 当前环境: ${environment}, 版本类型: ${baseVersionType}, 强制: ${isForce}`);
 
   const projectPath = session.config.projectSpace?.path || process.cwd();
 
+  // 立即提交 LongTask，测试和部署都在其中执行
   const ltManager = await getLongTaskManager(session.config.id);
   const task = ltManager.submit({
     agentId: session.config.id,
     userId: fromUser,
     chatId: fromUser,
     contextToken,
-    prompt: `部署 Bot: ${versionType}`,
-    command: `npm run version:${versionType}`,
+    prompt: `部署 Bot: ${baseVersionType}${isForce ? " (强制)" : ""}`,
+    command: `bash scripts/deploy-pipeline.sh ${baseVersionType}${isForce ? " --force" : ""}`,
     cwd: projectPath,
     model: session.config.ai.model,
     maxTurns: 1,
@@ -300,7 +290,7 @@ export async function deployHandler(args: string, context: CommandContext): Prom
       const deployMessage =
         `✅ **部署成功**\n\n` +
         `版本: ${version}\n` +
-        `类型: ${versionType}\n` +
+        `类型: ${baseVersionType}${isForce ? " (强制)" : ""}\n` +
         `时间: ${new Date().toLocaleString("zh-CN")}\n\n` +
         `🔄 服务将在 3 秒后重启以应用新版本...`;
 
@@ -349,11 +339,12 @@ export async function deployHandler(args: string, context: CommandContext): Prom
   });
 
   const queueLen = ltManager.getQueueLength();
-  let response = `🚀 部署任务已提交为耗时任务\n\nID: \`${task.id}\`\n类型: ${versionType}\n路径: ${projectPath}\n`;
+  let response = `🚀 部署任务已提交为耗时任务\n\nID: \`${task.id}\`\n类型: ${baseVersionType}${isForce ? " (强制)" : ""}\n路径: ${projectPath}\n`;
   if (task.status === "pending" && queueLen > 0) {
     response += `排队位置: 前面还有 ${queueLen} 个任务\n`;
   }
-  response += `\n每 ${ltManager.getReportIntervalSec()} 秒会收到进度报告。\n`;
+  response += `\n📋 执行流程：测试 → 清理 → 版本更新\n`;
+  response += `每 ${ltManager.getReportIntervalSec()} 秒会收到进度报告。\n`;
   response += `使用 \`/longtask status ${task.id}\` 查看进度\n`;
   response += `使用 \`/longtask cancel ${task.id}\` 取消任务`;
 
