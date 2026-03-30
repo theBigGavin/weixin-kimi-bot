@@ -37,6 +37,7 @@ echo ""
 # 运行测试，将输出保存到文件以便分析
 TEST_LOG_FILE="/tmp/deploy-test-$(date +%s).log"
 echo "运行: npm test (日志保存到 $TEST_LOG_FILE)"
+echo ""
 
 # 运行测试并捕获所有输出
 npm test 2>&1 | tee "$TEST_LOG_FILE"
@@ -47,54 +48,62 @@ echo "================================"
 echo "📊 测试结果分析"
 echo "================================"
 
-# 从日志文件解析测试结果（更可靠）
+# 检查测试是否成功 - 关键：查看最后的总结行
 if [ -f "$TEST_LOG_FILE" ]; then
-    # 查找测试统计行
-    TEST_SUMMARY=$(tail -20 "$TEST_LOG_FILE" | grep -E "Test Files|Tests\s+\d+")
-    echo "$TEST_SUMMARY"
+    # 显示最后几行（测试结果总结）
+    echo "测试总结（最后10行）:"
+    tail -10 "$TEST_LOG_FILE"
+    echo ""
     
-    # 提取数字
-    PASSED=$(grep -oE "Tests\s+[0-9]+\s+passed" "$TEST_LOG_FILE" | tail -1 | grep -oE "[0-9]+" || echo "0")
-    FAILED=$(grep -oE "Tests\s+[0-9]+\s+failed" "$TEST_LOG_FILE" | tail -1 | grep -oE "[0-9]+" || echo "0")
-    SKIPPED=$(grep -oE "[0-9]+\s+skipped" "$TEST_LOG_FILE" | tail -1 | grep -oE "[0-9]+" || echo "0")
+    # 检查是否所有测试文件都通过
+    # 成功标志："Test Files  X passed" 且没有 "X failed"
+    FAILED_FILES=$(grep -E "^\s*Test Files\s+[0-9]+\s+failed" "$TEST_LOG_FILE" | grep -oE "[0-9]+\s+failed" | grep -oE "[0-9]+" || echo "0")
+    PASSED_FILES=$(grep -E "^\s*Test Files\s+[0-9]+\s+passed" "$TEST_LOG_FILE" | tail -1 | grep -oE "[0-9]+" | head -1 || echo "0")
     
-    # 如果没有匹配到 passed，尝试其他格式
-    if [ "$PASSED" = "0" ]; then
-        # 尝试匹配 "Tests  432 passed (432)" 这种格式
-        PASSED=$(grep -oE "Tests\s+[0-9]+\s+passed" "$TEST_LOG_FILE" | tail -1 | awk '{print $2}' || echo "0")
-    fi
+    # 检查测试数量
+    TESTS_LINE=$(grep -E "^\s*Tests\s+[0-9]+\s+passed" "$TEST_LOG_FILE" | tail -1)
+    PASSED_TESTS=$(echo "$TESTS_LINE" | grep -oE "[0-9]+" | head -1 || echo "0")
+    
+    echo "文件统计:"
+    echo "  通过: $PASSED_FILES 个测试文件"
+    echo "  失败: $FAILED_FILES 个测试文件"
+    echo ""
+    echo "测试统计:"
+    echo "  通过: $PASSED_TESTS 个测试"
+    echo ""
 else
     echo "错误: 测试日志文件未找到"
-    PASSED="0"
-    FAILED="0"
-    SKIPPED="0"
+    FAILED_FILES="1"
+    PASSED_TESTS="0"
 fi
 
-echo ""
-echo "统计结果:"
-echo "  通过: ${PASSED:-0}"
-echo "  失败: ${FAILED:-0}"
-echo "  跳过: ${SKIPPED:-0}"
-echo "  npm exit code: $TEST_EXIT"
+echo "npm test 退出码: $TEST_EXIT"
 echo ""
 
-# 判断测试是否成功
-# 标准: 通过数 > 0 且 失败数 = 0
-if [ "${FAILED:-0}" -eq 0 ] && [ "${PASSED:-0}" -gt 0 ]; then
-    echo "✅ 测试验证通过！($PASSED 个测试)"
+# 判断测试是否成功的标准：
+# 1. 有测试通过（PASSED_TESTS > 0）
+# 2. 没有失败的测试文件（FAILED_FILES == 0）
+# 3. npm 退出码为 0
+
+if [ "${FAILED_FILES:-0}" -eq 0 ] && [ "${PASSED_TESTS:-0}" -gt 0 ] && [ "$TEST_EXIT" -eq 0 ]; then
+    echo "✅ 测试验证通过！($PASSED_TESTS 个测试，$PASSED_FILES 个文件)"
 elif [ -n "$FORCE_FLAG" ]; then
-    echo "⚠️ 警告: 测试未完全通过，但强制模式启用"
-    echo "   通过: $PASSED, 失败: $FAILED, 跳过: $SKIPPED"
+    echo "⚠️ 警告: 测试可能未完全通过，但强制模式启用"
+    echo "   通过: $PASSED_TESTS 个测试"
+    echo "   失败文件: $FAILED_FILES"
+    echo "   npm exit: $TEST_EXIT"
     echo "   继续执行部署..."
 else
     echo "❌ 测试验证失败"
-    echo "   通过: $PASSED, 失败: $FAILED, 跳过: $SKIPPED"
+    echo "   通过: $PASSED_TESTS 个测试"
+    echo "   失败文件: $FAILED_FILES"
+    echo "   npm exit: $TEST_EXIT"
     echo ""
     echo "部署被拒绝。修复建议:"
     echo "  1. 运行 'npm test' 本地查看详细错误"
     echo "  2. 或使用强制部署: /deploy $VERSION_TYPE --force"
     echo ""
-    echo "测试日志: $TEST_LOG_FILE"
+    echo "完整测试日志: $TEST_LOG_FILE"
     exit 1
 fi
 
@@ -116,6 +125,7 @@ echo ""
 echo "📦 步骤 3/3: 执行版本更新..."
 echo "================================"
 echo "运行: npm run version:$VERSION_TYPE"
+echo ""
 
 npm run "version:$VERSION_TYPE" 2>&1
 VERSION_EXIT=$?
