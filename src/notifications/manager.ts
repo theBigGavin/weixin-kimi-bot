@@ -19,7 +19,12 @@ import {
 } from "./types.js";
 import { createEmailChannel, createTelegramChannel } from "./channels/index.js";
 
-const BASE_DIR = join(homedir(), ".weixin-kimi-bot");
+function getBaseDir(): string {
+  // 允许通过环境变量配置存储目录（用于测试）
+  return process.env.TEST_DATA_DIR || join(homedir(), ".weixin-kimi-bot");
+}
+
+const BASE_DIR = getBaseDir();
 
 /**
  * 获取通知通道文件路径

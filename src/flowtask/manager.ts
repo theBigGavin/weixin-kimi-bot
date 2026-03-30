@@ -63,7 +63,8 @@ export class FlowTaskManager {
 
   constructor(agentId: string, options: Partial<FlowTaskManagerOptions> = {}) {
     this.agentId = agentId;
-    const baseDir = join(homedir(), ".weixin-kimi-bot", "agents", agentId);
+    const dataDir = process.env.TEST_DATA_DIR || join(homedir(), ".weixin-kimi-bot");
+    const baseDir = join(dataDir, "agents", agentId);
     this.historyFile = join(baseDir, "flowtask-history.jsonl");
     
     // 确保目录存在
