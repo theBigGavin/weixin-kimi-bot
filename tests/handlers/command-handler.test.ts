@@ -191,6 +191,127 @@ describe('handleCommand', () => {
     });
   });
 
+  describe('prompt command', () => {
+    it('should return system prompt preview', async () => {
+      const context = createMockContext({
+        session: {
+          runtime: {
+            template: { 
+              icon: '🤖', 
+              name: 'Test', 
+              description: 'Test template',
+              systemPrompt: 'Test system prompt',
+            },
+            memory: { facts: [], projects: [] },
+            config: {
+              workspace: { path: '/test' },
+              memory: { enabled: false },
+              ai: { model: 'test', templateId: 'general', maxTurns: 10 },
+            },
+          },
+          config: { 
+            id: 'test-agent', 
+            workspace: { path: '/test' },
+            memory: { enabled: false },
+            ai: { model: 'test', templateId: 'general', maxTurns: 10 },
+          },
+          api: { baseUrl: 'https://test.com', token: 'token123' },
+          credentials: { botToken: 'token', accountId: 'acc', baseUrl: 'https://test.com' },
+          conversationTurns: new Map(),
+          lastMemoryExtract: new Map(),
+          userWorkspaces: new Map(),
+        },
+      });
+      const result = await handleCommand('prompt', '', context);
+      
+      expect(result).toContain('当前系统提示词');
+      expect(result).toContain('```');
+    });
+
+    it('should truncate long prompts', async () => {
+      const longTemplate = 'a'.repeat(3000);
+      const context = createMockContext({
+        session: {
+          runtime: {
+            template: { 
+              icon: '🤖', 
+              name: 'Test', 
+              description: 'Test template',
+              systemPrompt: longTemplate,
+            },
+            memory: { facts: [], projects: [] },
+            config: {
+              workspace: { path: '/test' },
+              memory: { enabled: false },
+              ai: { model: 'test', templateId: 'test', maxTurns: 10 },
+            },
+          },
+          config: { 
+            id: 'test-agent', 
+            workspace: { path: '/test' },
+            memory: { enabled: false },
+            ai: { model: 'test', templateId: 'test', maxTurns: 10 },
+          },
+          api: { baseUrl: 'https://test.com', token: 'token123' },
+          credentials: { botToken: 'token', accountId: 'acc', baseUrl: 'https://test.com' },
+          conversationTurns: new Map(),
+          lastMemoryExtract: new Map(),
+          userWorkspaces: new Map(),
+        },
+      });
+      const result = await handleCommand('prompt', '', context);
+      
+      expect(result).toContain('当前系统提示词');
+      expect(result).toContain('... (已截断)');
+    });
+
+    it('should include founder prompt for founder agent', async () => {
+      const context = createMockContext({
+        session: {
+          runtime: {
+            template: { 
+              icon: '🤖', 
+              name: 'Test', 
+              description: 'Test template',
+              systemPrompt: 'Test system prompt',
+            },
+            memory: { facts: [], projects: [] },
+            config: {
+              workspace: { path: '/test' },
+              memory: { enabled: false },
+              ai: { model: 'test', templateId: 'test', maxTurns: 10 },
+              type: 'founder',
+              projectSpace: {
+                path: '/project/test',
+                description: 'Test Project',
+              },
+            },
+          },
+          config: { 
+            id: 'test-agent', 
+            workspace: { path: '/test' },
+            memory: { enabled: false },
+            ai: { model: 'test', templateId: 'test', maxTurns: 10 },
+            type: 'founder',
+            projectSpace: {
+              path: '/project/test',
+              description: 'Test Project',
+            },
+          },
+          api: { baseUrl: 'https://test.com', token: 'token123' },
+          credentials: { botToken: 'token', accountId: 'acc', baseUrl: 'https://test.com' },
+          conversationTurns: new Map(),
+          lastMemoryExtract: new Map(),
+          userWorkspaces: new Map(),
+        },
+      });
+      const result = await handleCommand('prompt', '', context);
+      
+      expect(result).toContain('当前系统提示词');
+      expect(result).toContain('项目维护规范');
+    });
+  });
+
   describe('context command (with sessionContext)', () => {
     it('should show status when no argument', async () => {
       const context = createMockContext({

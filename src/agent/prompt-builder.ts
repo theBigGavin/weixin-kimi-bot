@@ -6,6 +6,7 @@
 import type { AgentRuntime, PromptBuildOptions } from "./types.js";
 import { formatMemoryForPrompt } from "../memory/manager.js";
 import { getTDDInstruction } from "../prompt/tdd-instruction.js";
+import { buildFounderPrompt } from "../handlers/message-utils.js";
 
 /**
  * 构建系统提示词
@@ -33,7 +34,15 @@ export function buildSystemPrompt(
     parts.push(tddInstruction);
   }
 
-  // 2. 长期记忆（如果启用）
+  // 3. 创始Agent项目空间提示词（仅创始Agent）
+  if (runtime.config.type === "founder") {
+    const founderPrompt = buildFounderPrompt(runtime.config);
+    if (founderPrompt) {
+      parts.push(founderPrompt);
+    }
+  }
+
+  // 5. 长期记忆（如果启用）
   if (opts.includeMemory && runtime.config.memory.enabled) {
     const memoryContext = formatMemoryForPrompt(
       runtime.memory,
@@ -45,7 +54,7 @@ export function buildSystemPrompt(
     }
   }
 
-  // 3. 当前项目上下文
+  // 6. 当前项目上下文
   if (opts.includeProjects) {
     const activeProject = runtime.memory.projects.find(
       p => p.id === runtime.context.currentProjectId && p.status === "active"
@@ -62,15 +71,15 @@ export function buildSystemPrompt(
     }
   }
 
-  // 4. 用户自定义提示词（追加）
+  // 7. 用户自定义提示词（追加）
   if (runtime.config.templateOverride?.systemPromptAppend) {
     parts.push("## 额外指令\n" + runtime.config.templateOverride.systemPromptAppend);
   }
 
-  // 5. 工作目录信息
+  // 8. 工作目录信息
   parts.push(`## 工作目录\n当前工作目录: ${runtime.config.workspace.path}\n请在此目录下进行文件操作。`);
 
-  // 6. 当前状态提示（确保AI知道上下文可能不完整）
+  // 9. 当前状态提示（确保AI知道上下文可能不完整）
   parts.push(`## 注意\n` +
     `- 当前日期: ${new Date().toLocaleDateString("zh-CN")}\n` +
     `- 如果上下文看起来不完整，请询问用户确认\n` +
