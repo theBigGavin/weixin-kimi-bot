@@ -5,12 +5,18 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { tmpdir } from "os";
+import { mkdtempSync, rmSync } from "fs";
+import { join } from "path";
 import { handleCommand, getCommandList } from "../../src/handlers/command-handler.js";
 import { handleAgentCommandWithContext } from "../../src/handlers/command-context.js";
 import { initializeContextSystem } from "../../src/context/index.js";
 import { ConversationState } from "../../src/context/types.js";
 import type { AgentSession, CommandContext } from "../../src/handlers/types.js";
 import type { AgentConfig, AgentRuntime, AgentMemory, CapabilityTemplate } from "../../src/agent/types.js";
+
+// 创建临时测试目录
+const testTempDir = mkdtempSync(join(tmpdir(), "cmd-test-"));
 
 // Mock dependencies
 vi.mock("../../src/kimi/session.js", () => ({
@@ -117,7 +123,7 @@ const mockConfig: AgentConfig = {
   createdAt: Date.now(),
   updatedAt: Date.now(),
   wechat: { accountId: "test" },
-  workspace: { path: "/test", createdAt: Date.now() },
+  workspace: { path: testTempDir, createdAt: Date.now() },
   ai: { model: "kimi", templateId: "default", maxTurns: 10 },
   memory: { enabled: true, maxItems: 100, autoExtract: false },
   features: { scheduledTasks: true, notifications: true, fileAccess: true, webSearch: true },

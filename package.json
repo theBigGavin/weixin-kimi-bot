@@ -1,6 +1,6 @@
 {
   "name": "weixin-kimi-bot",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "通过微信消息远程操控 Kimi Code CLI —— 基于腾讯 iLink 协议的微信 AI Bot",
   "type": "module",
   "private": true,
@@ -32,15 +32,21 @@
     "service:status": "pm2 status weixin-kimi-bot",
     "service:logs": "pm2 logs weixin-kimi-bot",
     "service:delete": "pm2 delete weixin-kimi-bot",
-    "service:monitor": "pm2 monitor"
+    "service:monitor": "pm2 monitor",
+    "test:coverage": "vitest run --coverage",
+    "test:changed": "vitest run --changed",
+    "test:ui": "vitest --ui",
+    "lint": "echo \"TODO: Add linter\""
   },
   "dependencies": {
-    "qrcode-terminal": "^0.12.0",
-    "nodemailer": "^6.9.13"
+    "nodemailer": "^6.9.13",
+    "qrcode-terminal": "^0.12.0"
   },
   "devDependencies": {
     "@types/node": "^22",
     "@types/nodemailer": "^6.4.15",
+    "@vitest/coverage-v8": "^2.1.9",
+    "@vitest/ui": "^2.0.0",
     "tsx": "^4",
     "typescript": "^5",
     "vitest": "^2"

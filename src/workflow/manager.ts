@@ -436,7 +436,11 @@ export function getWorkflowManager(
   if (!managers.has(agentId)) {
     managers.set(
       agentId,
-      new WorkflowManager({ agentId, workspacePath })
+      new WorkflowManager({ 
+        agentId, 
+        workspacePath,
+        maxConcurrentExecutions: 3 
+      })
     );
   }
   return managers.get(agentId)!;

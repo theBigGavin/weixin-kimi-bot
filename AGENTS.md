@@ -1,75 +1,307 @@
-# 多Agent系统使用指南
+# weixin-kimi-bot 项目指南
 
-微信 Kimi Bot 支持多Agent架构，每个微信账号可以绑定独立的AI助手，拥有不同的能力、工作目录和记忆。
+本文件为 AI Coding Agent 提供项目概述、构建说明、代码规范等关键信息。
 
-## 核心概念
+## 项目概述
 
-### Agent（智能体）
-一个Agent代表一个完整的AI助手实例，包含：
-- **独立身份**：绑定的微信账号
-- **工作目录**：独立的文件系统空间
-- **能力模板**：角色设定和行为模式
-- **长期记忆**：个性化的知识库
-- **专属配置**：模型参数、功能开关
+**weixin-kimi-bot** 是一个基于腾讯 iLink 协议的微信 AI Bot，通过微信消息远程操控 Kimi Code CLI。
 
-### 能力模板
-预置的专业角色模板：
-
-| 模板 | 图标 | 说明 |
-|------|------|------|
-| 程序员助手 | 💻 | 代码编写、调试、架构设计 |
-| 写作助手 | ✍️ | 文案创作、编辑润色 |
-| Vlog创作者 | 🎬 | 脚本策划、分镜设计 |
-| 数字货币投资者 | ₿ | 市场分析、投资策略 |
-| A股操盘手 | 📈 | 政策解读、板块分析 |
-| 通用助手 | 🤖 | 日常问答、学习辅导 |
-
-## 快速开始
-
-### 1. 创建第一个Agent
-
-```bash
-npm run login
+```
+微信用户 ──► iLink 协议 ──► weixin-kimi-bot ──► Kimi CLI ──► 本地文件系统
+   ◄─────────────────────────────────────────────────────────────────────┘
 ```
 
-流程：
-1. 扫描二维码登录微信
-2. 选择能力模板（如：程序员助手）
-3. 设置Agent名称
-4. 选择/创建工作目录
-5. 完成创建
+### 核心特性
 
-### 2. 启动Agent
+- **多 Agent 架构**：支持多个微信账号，每个账号拥有独立的 AI 助手、工作目录和长期记忆
+- **能力模板**：预置多种专业角色（程序员助手、写作助手、Vlog 创作者、数字货币投资者、A 股操盘手、通用助手）
+- **上下文感知架构**：四层架构（会话上下文、任务上下文、项目上下文、用户画像、知识图谱）
+- **任务系统**：支持定时任务、耗时任务（LongTask）、可靠任务流（FlowTask）、工作流（Workflow）
+- **通知通道**：支持邮件、Telegram 等多种通知方式
+
+## 技术栈
+
+| 类别 | 技术 |
+|------|------|
+| 语言 | TypeScript 5.x |
+| 运行时 | Node.js 18+ |
+| 模块系统 | ES Modules (ES2022) |
+| 构建工具 | TypeScript Compiler (`tsc`) |
+| 即时执行 | tsx (免编译运行 .ts) |
+| 测试框架 | Vitest 2.x |
+| 进程管理 | PM2 (后台服务) |
+| 外部依赖 | `qrcode-terminal`, `nodemailer` |
+
+## 项目结构
+
+```
+weixin-kimi-bot/
+├── src/                          # 源代码目录
+│   ├── index.ts                  # 主入口：多 Agent 消息处理
+│   ├── login.ts                  # QR 扫码登录 + Agent 创建
+│   ├── config.ts                 # 配置管理 CLI
+│   ├── store.ts                  # 状态持久化
+│   ├── scheduler.ts              # 定时任务调度器
+│   │
+│   ├── ilink/                    # iLink 协议封装
+│   │   ├── types.ts              # iLink 协议类型
+│   │   ├── api.ts                # HTTP API 封装
+│   │   └── auth.ts               # QR 登录流程
+│   │
+│   ├── kimi/                     # Kimi CLI 集成
+│   │   ├── handler.ts            # Kimi CLI 调用处理
+│   │   └── session.ts            # Session 管理
+│   │
+│   ├── agent/                    # 多 Agent 系统核心
+│   │   ├── types.ts              # Agent 类型定义
+│   │   ├── manager.ts            # Agent 管理器
+│   │   ├── prompt-builder.ts     # 提示词构建
+│   │   └── cli.ts                # Agent 管理 CLI
+│   │
+│   ├── handlers/                 # 消息和命令处理
+│   │   ├── index.ts              # 处理器入口
+│   │   ├── message-handler.ts    # 消息处理
+│   │   ├── command-handler.ts    # 命令处理
+│   │   ├── command-context.ts    # 上下文感知命令处理
+│   │   └── commands/             # 子命令实现
+│   │
+│   ├── context/                  # 上下文感知架构
+│   │   ├── types.ts              # 上下文类型定义
+│   │   ├── session-context.ts    # 会话上下文管理
+│   │   ├── state-machine.ts      # 对话状态机
+│   │   ├── intent-resolver.ts    # 意图识别
+│   │   ├── reference-resolver.ts # 指代消解
+│   │   ├── output-parser.ts      # 输出解析
+│   │   └── persistence.ts        # 持久化
+│   │
+│   ├── longtask/                 # 耗时任务管理
+│   │   ├── manager.ts            # 任务管理器
+│   │   ├── parser.ts             # 进度解析器
+│   │   ├── tool-predictor.ts     # 工具调用预测
+│   │   ├── persistence.ts        # 状态持久化
+│   │   └── recovery.ts           # 崩溃恢复
+│   │
+│   ├── flowtask/                 # 可靠任务流
+│   │   ├── manager.ts            # 任务流管理器
+│   │   ├── worker.ts             # 工作进程
+│   │   ├── plan-generator.ts     # 计划生成
+│   │   └── state-machine.ts      # 状态管理
+│   │
+│   ├── workflow/                 # 工作流系统
+│   │   ├── manager.ts            # 工作流管理器
+│   │   ├── engine.ts             # 执行引擎
+│   │   ├── parser.ts             # DSL 解析器
+│   │   └── nodes/                # 节点类型实现
+│   │
+│   ├── task-router/              # 智能任务路由
+│   │   ├── index.ts              # 路由主逻辑
+│   │   ├── analyzer.ts           # 任务分析器
+│   │   └── decision.ts           # 决策逻辑
+│   │
+│   ├── templates/                # 能力模板
+│   │   ├── definitions.ts        # 预置角色模板
+│   │   └── custom-manager.ts     # 自定义模板管理
+│   │
+│   ├── memory/                   # 长期记忆系统
+│   │   └── manager.ts            # 记忆管理器
+│   │
+│   ├── notifications/            # 通知通道
+│   │   ├── types.ts              # 通知类型定义
+│   │   ├── manager.ts            # 通知管理器
+│   │   ├── channels/             # 通道实现
+│   │   └── cli.ts                # CLI 工具
+│   │
+│   ├── services/                 # 服务层
+│   │   ├── agent-poller.ts       # Agent 消息轮询
+│   │   ├── session-manager.ts    # Session 管理
+│   │   └── restart-notify.ts     # 重启通知
+│   │
+│   ├── prompt/                   # Prompt 构建
+│   │   ├── builder.ts            # Prompt 构建器
+│   │   └── index.ts              # 导出
+│   │
+│   ├── utils/                    # 工具函数
+│   │   ├── helpers.ts            # 通用辅助函数
+│   │   └── message.ts            # 消息处理工具
+│   │
+│   ├── types/index.ts            # 全局类型定义
+│   └── version.ts                # 版本信息
+│
+├── tests/                        # 测试目录
+│   ├── context/                  # 上下文系统测试
+│   ├── handlers/                 # 处理器测试
+│   ├── services/                 # 服务层测试
+│   ├── integration/              # 集成测试
+│   └── utils/                    # 工具函数测试
+│
+├── scripts/                      # 脚本工具
+│   ├── bump-version.js           # 版本号管理
+│   ├── migrate-to-multi-agent.js # 迁移脚本
+│   └── setup-service.sh          # 服务安装脚本
+│
+├── docs/                         # 文档目录
+│   └── flowtask-usage.md         # FlowTask 使用文档
+│
+├── package.json                  # 项目配置
+├── tsconfig.json                 # TypeScript 配置
+├── ecosystem.config.cjs          # PM2 配置
+└── [各种文档].md                  # 项目文档
+```
+
+## 构建和运行
+
+### 前置条件
+
+- Node.js 18+
+- Kimi CLI (通过 `uv tool install kimi-cli` 安装)
+- Moonshot API Key (Kimi CLI 配置时已设置)
+
+### 安装依赖
 
 ```bash
-# 启动默认Agent（如果有多个，启动所有）
+npm install
+```
+
+### 开发运行
+
+```bash
+# 创建第一个 Agent（扫码登录）
+npm run login
+
+# 启动 Bot（前台模式）
 npm start
 
-# 启动指定Agent
+# 启动指定 Agent
 ACTIVE_AGENT_ID=agent_xxx npm start
 ```
 
-### 3. 创建更多Agent
-
-再次运行 `npm run login`，用不同的微信扫码即可创建新Agent。
-
-每个Agent完全隔离：
-- **不同的工作目录** - 每个Agent有自己的 workspace，默认在 `~/.weixin-kimi-bot/agents/{id}/workspace/`
-- **不同的长期记忆** - 个性化记忆不共享
-- **不同的能力设定** - 各自的能力模板和配置
-
-**安全设计**：新版本移除了全局 `cwd` 配置，每个 Agent 默认使用隔离的工作目录，避免文件冲突和数据泄露。
-
-## Agent管理命令
+### 生产部署
 
 ```bash
-# 列出所有Agent
+# 编译 TypeScript
+npm run build
+
+# 使用 PM2 启动后台服务
+npm run service:start
+
+# 查看状态
+npm run service:status
+
+# 查看日志
+npm run service:logs
+```
+
+### 部署更新
+
+```bash
+# 更新版本号并重启
+npm run deploy:patch   # 修订号 +1
+npm run deploy:minor   # 次版本号 +1
+npm run deploy:major   # 主版本号 +1
+```
+
+## 测试
+
+本项目采用 **TDD (测试驱动开发)** 模式。
+
+### 运行测试
+
+```bash
+# 运行所有测试
+npm test
+
+# 监视模式（开发时使用）
+npm run test:watch
+
+# 运行特定测试文件
+npm test -- tests/context/state-machine.test.ts
+
+# 生成覆盖率报告
+npm run test:coverage
+
+# 运行匹配描述的测试
+npm test -- -t "应该创建新Agent"
+```
+
+### TDD 工作流程
+
+1. **编写测试** (红色) - 先写测试，定义期望行为
+2. **运行测试** (应失败) - 确认测试失败
+3. **编写代码** (绿色) - 实现最小功能使测试通过
+4. **重构** (保持绿色) - 优化代码，确保测试仍通过
+5. **重复** - 继续下一个功能
+
+### 测试规范
+
+- 测试文件: `tests/{模块}/{功能}.test.ts`
+- 命名规范: `应该{期望行为}当{条件}`
+- 使用数据工厂: `tests/__fixtures__/factories.ts`
+- 使用 Mock 工具: `tests/__helpers__/mock-utils.ts`
+
+### 测试示例
+
+```typescript
+// tests/agent/validation.test.ts
+import { describe, it, expect } from "vitest";
+import { validateAgentConfig } from "../../src/agent/validation.js";
+
+describe('validateAgentConfig', () => {
+  it('应该检测缺少名称', () => {
+    // Arrange
+    const config = { wechat: { accountId: 'wxid_test' } };
+    
+    // Act
+    const result = validateAgentConfig(config);
+    
+    // Assert
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('name is required');
+  });
+});
+```
+
+## 代码规范
+
+### 导入规范
+
+- 使用 ES Modules (`"type": "module"`)
+- TypeScript 文件扩展名使用 `.ts`，导入时保留 `.js` 扩展名（Node16 模块解析）
+- 示例：
+  ```typescript
+  import { agentManager } from "../agent/manager.js";
+  import type { AgentConfig } from "../agent/types.js";
+  ```
+
+### 命名规范
+
+- 文件名使用 kebab-case（短横线连接）
+- 类型/接口使用 PascalCase
+- 函数/变量使用 camelCase
+- 常量使用 UPPER_SNAKE_CASE
+
+### 注释规范
+
+- 使用 JSDoc 注释函数和类型
+- 关键逻辑添加中文注释
+- 复杂算法添加实现说明
+
+### 类型规范
+
+- 优先使用 `type` 定义对象类型
+- 使用 `interface` 定义可扩展的类层次结构
+- 导出类型使用 `export type`
+- 类型文件统一放在 `src/types/` 或模块内的 `types.ts`
+
+## Agent 管理命令
+
+```bash
+# 列出所有 Agent
 npm run agent:list
 
-# 交互式选择Agent
+# 交互式选择 Agent
 npm run agent:switch
 
-# 查看Agent配置
+# 查看 Agent 配置
 npm run agent:config [agent-id]
 
 # 切换能力模板
@@ -78,240 +310,92 @@ npm run agent:template [agent-id]
 # 查看长期记忆
 npm run agent:memory [agent-id]
 
-# 删除Agent
+# 删除 Agent
 npm run agent:delete <agent-id>
 ```
 
-## 工作目录结构
+## 关键环境变量
 
-> ⚠️ **安全提示**：每个 Agent 拥有**完全独立**的工作目录，不再共享全局 `cwd`。
-> 这避免了不同 Agent 之间的文件冲突和数据泄露风险。
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `ACTIVE_AGENT_ID` | 指定要启动的 Agent ID | 所有 Agent |
+| `ENABLE_CONTEXT_AWARE` | 启用上下文感知架构 | `true` |
+| `NODE_ENV` | 运行环境 | `production` |
 
-每个Agent的数据目录：
+## 数据存储
+
+所有数据存储在 `~/.weixin-kimi-bot/`，每个 Agent 拥有完全独立的存储空间：
 
 ```
 ~/.weixin-kimi-bot/
-├── agents/                          # 所有Agent数据
-│   ├── agent_001_abcd1234/         # Agent 1（完全隔离）
-│   │   ├── config.json             # Agent专属配置
-│   │   ├── memory.json             # 长期记忆
-│   │   ├── credentials.json        # 微信登录凭证
-│   │   ├── sync-buf.txt            # 消息同步游标（独立）
-│   │   ├── context-tokens.json     # 微信上下文令牌（独立）
-│   │   ├── scheduled-tasks.json    # 定时任务（独立）
-│   │   └── workspace/              # 工作目录
-│   │       ├── README.md
-│   │       └── ...（项目文件）
-│   │
-│   └── agent_002_efgh5678/         # Agent 2（完全隔离）
-│       └── ...（相同结构）
+├── agents/{agent_id}/
+│   ├── config.json              # Agent 配置
+│   ├── memory.json              # 长期记忆
+│   ├── credentials.json         # 微信登录凭证
+│   ├── sync-buf.txt             # 消息同步游标
+│   ├── context-tokens.json      # 会话上下文
+│   ├── scheduled-tasks.json     # 定时任务
+│   ├── notification-channels.json # 通知通道
+│   ├── longtask/                # 耗时任务数据
+│   ├── contexts/                # 上下文会话存储
+│   └── workspace/               # 工作目录
 │
-└── templates/                       # 能力模板（共享）
+└── templates/                   # 能力模板（共享）
 ```
 
-### 数据隔离说明
+## 微信聊天命令
 
-| 数据类型 | 存储位置 | 是否隔离 | 说明 |
-|---------|---------|---------|------|
-| Agent配置 | `agents/{id}/config.json` | ✅ 完全隔离 | 每个Agent独立配置 |
-| 长期记忆 | `agents/{id}/memory.json` | ✅ 完全隔离 | 个性化记忆不共享 |
-| 微信凭证 | `agents/{id}/credentials.json` | ✅ 完全隔离 | 绑定不同微信 |
-| 同步游标 | `agents/{id}/sync-buf.txt` | ✅ 完全隔离 | 各Agent独立消息轮询 |
-| 上下文令牌 | `agents/{id}/context-tokens.json` | ✅ 完全隔离 | 各Agent独立会话 |
-| 定时任务 | `agents/{id}/scheduled-tasks.json` | ✅ 完全隔离 | 各Agent独立任务 |
-| 工作目录 | `agents/{id}/workspace/` | ✅ 完全隔离 | 代码/文件互不干扰 |
-| 能力模板 | `templates/` | 🔄 共享 | 所有Agent共用模板定义 |
-| 通知通道 | `agents/{id}/notification-channels.json` | ✅ 完全隔离 | 各Agent独立配置，安全隔离 |
+用户在聊天中可以使用以下命令：
 
-## 聊天命令
+| 命令 | 说明 |
+|------|------|
+| `/help` | 显示帮助信息 |
+| `/status` | 查看 Agent 状态 |
+| `/reset` | 重置对话上下文 |
+| `/template` | 查看/切换能力模板 |
+| `/memory` | 查看长期记忆 |
+| `/prompt` | 预览系统提示词 |
+| `/task` | 定时任务管理 |
+| `/longtask` | 后台执行耗时任务 |
+| `/flowtask` | 可靠任务流 |
+| `/workflow` | 工作流管理 |
+| `/route` | 智能任务路由分析 |
+| `/context` | 查看上下文详情 |
+| `/session` | 查看 Session 状态 |
+| `/ver` | 查看版本信息 |
 
-在与Bot对话时，可以使用以下命令：
+## 相关文档
 
-```
-/help          # 显示帮助
-/status        # 查看Agent状态
-/reset         # 重置对话上下文
-/template      # 查看/切换能力模板
-/memory        # 查看长期记忆
-/prompt        # 预览系统提示词
-/ver           # 查看Bot版本信息
-```
+- [README.md](./README.md) - 项目使用说明
+- [ARCHITECTURE.md](./ARCHITECTURE.md) - 多 Agent 架构设计
+- [CONTEXT_ARCHITECTURE.md](./CONTEXT_ARCHITECTURE.md) - 上下文感知架构
+- [SCHEDULER.md](./SCHEDULER.md) - 定时任务文档
+- [LONGTASK.md](./LONGTASK.md) - 耗时任务文档
+- [NOTIFICATIONS.md](./NOTIFICATIONS.md) - 通知通道文档
+- [MIGRATION.md](./MIGRATION.md) - 版本迁移指南
 
-## 长期记忆系统
+## 安全注意事项
 
-### 自动记忆提取
-
-Bot会自动从对话中提取重要信息：
-- 用户身份信息（姓名、职业）
-- 正在进行的项目
-- 技术偏好和习惯
-- 重要决策和事实
-
-### 记忆在对话中的应用
-
-每次对话时，相关记忆会自动注入系统提示词，使Bot能够：
-- 记住你的姓名和角色
-- 了解你正在进行的项目
-- 适应你的偏好和习惯
-- 避免重复询问已知信息
-
-### 记忆查看和管理
-
-```
-/memory              # 查看所有记忆
-```
-
-## 提示词管理策略
-
-### 智能注入
-
-系统会在以下情况重新注入完整的系统提示词：
-1. 对话开始时（首轮）
-2. 对话轮次达到阈值的80%
-3. 用户发送 `/reset` 命令
-4. 检测到上下文可能丢失
-
-### 提示词组成
-
-完整的系统提示词包括：
-1. **基础能力模板** - 角色设定和核心能力
-2. **长期记忆** - 相关的事实和项目信息
-3. **当前项目** - 活跃项目上下文
-4. **用户自定义指令** - 额外的个性化设定
-5. **工作目录** - 当前工作空间路径
-
-### 查看当前提示词
-
-```
-/prompt
-```
-
-## 多Agent并行
-
-你可以同时运行多个Agent：
-
-```bash
-# 终端1：启动Agent A
-ACTIVE_AGENT_ID=agent_xxx npm start
-
-# 终端2：启动Agent B
-ACTIVE_AGENT_ID=agent_yyy npm start
-```
-
-每个Agent独立处理各自微信账号的消息。
-
-## 配置存储
-
-### Agent配置 (~/.weixin-kimi-bot/agents/{id}/config.json)
-
-```json
-{
-  "id": "agent_1234567890",
-  "name": "我的程序员助手",
-  "wechat": {
-    "accountId": "wxid_xxx",
-    "nickname": "张三"
-  },
-  "workspace": {
-    "path": "/home/user/.weixin-kimi-bot/agents/agent_123/workspace"
-  },
-  "ai": {
-    "model": "kimi-code/kimi-for-coding",
-    "templateId": "programmer",
-    "maxTurns": 100
-  },
-  "memory": {
-    "enabled": true,
-    "autoExtract": true
-  },
-  "features": {
-    "fileAccess": true,
-    "webSearch": true,
-    "scheduledTasks": true
-  }
-}
-```
-
-## 最佳实践
-
-### 1. 为不同场景创建不同Agent
-
-- **工作Agent**：程序员助手，绑定工作微信
-- **个人Agent**：通用助手，绑定个人微信
-- **创作Agent**：写作助手，用于内容创作
-
-### 2. 定期查看和整理记忆
-
-```bash
-npm run agent:memory
-```
-
-### 3. 切换能力模板
-
-随着需求变化，可以随时切换角色：
-
-```bash
-npm run agent:template
-```
-
-### 4. 使用 `/reset` 管理上下文
-
-当感觉Bot"忘记"了重要设定时，发送 `/reset` 重新注入系统提示词。
+1. **Token 安全**：微信登录凭证和 Kimi CLI 凭据存储在本地，不会上传到任何服务器
+2. **Agent 隔离**：每个 Agent 拥有完全独立的工作目录和数据，互不干扰
+3. **iLink 协议**：腾讯未正式公开该协议，API 可能随时变更，不建议用于生产环境
+4. **后台服务**：使用 PM2 运行后台服务前，必须先在 前台完成 Kimi 登录
 
 ## 故障排查
 
-### Agent无法启动
+### 启动失败
 
-1. 检查凭证是否存在
-   ```bash
-   ls ~/.weixin-kimi-bot/agents/agent_xxx/credentials.json
-   ```
+1. 检查 Kimi CLI 是否安装：`kimi --version`
+2. 检查是否已登录：`kimi login`
+3. 检查是否有可用的 Agent：`npm run agent:list`
 
-2. 重新登录
-   ```bash
-   npm run login
-   ```
+### 测试失败
 
-### 记忆没有更新
+1. 检查依赖是否完整：`npm install`
+2. 检查 TypeScript 编译：`npm run build`
 
-1. 检查记忆功能是否启用
-   ```bash
-   npm run agent:config
-   ```
+### 消息无法发送
 
-2. 确保对话足够长（至少5轮才会触发记忆提取）
-
-### 提示词太长
-
-如果系统提示词超过模型限制：
-1. 减少自定义提示词
-2. 定期清理不重要的记忆
-3. 关闭某些功能
-
-## 高级功能
-
-### 自定义能力模板
-
-编辑 `src/templates/definitions.ts` 添加新的角色模板。
-
-### 程序化创建Agent
-
-```typescript
-import { agentManager } from "./agent/manager.js";
-
-await agentManager.createAgent(wechatAccountId, {
-  name: "自定义Agent",
-  templateId: "programmer",
-  workspacePath: "/custom/path",
-});
-```
-
-### 导出/导入Agent
-
-```bash
-# 导出Agent配置
-cp -r ~/.weixin-kimi-bot/agents/agent_xxx ./backup/
-
-# 导入Agent配置
-cp -r ./backup/agent_xxx ~/.weixin-kimi-bot/agents/
-```
+1. 检查微信登录状态：重新运行 `npm run login`
+2. 检查网络连接
+3. 查看日志：`npm run service:logs`
