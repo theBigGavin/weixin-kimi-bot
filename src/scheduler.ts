@@ -4,7 +4,8 @@
  * 每个Agent拥有独立的定时任务
  */
 import { spawn as spawnChild } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import type { ApiOptions } from "./ilink/api.js";
 import { scheduledTasksPath } from "./store.js";
 import { getNotificationManager, type NotificationMessage } from "./notifications/index.js";
@@ -364,6 +365,12 @@ export class AgentTaskScheduler {
         this.tasks.set(newTask.id, { task: newTask, nextRun });
       }
 
+      // 确保目录存在
+      const tasksDir = dirname(this.tasksFile);
+      if (!existsSync(tasksDir)) {
+        mkdirSync(tasksDir, { recursive: true });
+      }
+
       // 保存到文件
       let allTasks: ScheduledTask[] = [];
       if (existsSync(this.tasksFile)) {
@@ -375,7 +382,8 @@ export class AgentTaskScheduler {
       console.log(`[Scheduler:${this.agentId}] 添加任务: ${newTask.name}`);
       return newTask;
     } catch (e) {
-      throw new Error(`无效的crontab: ${newTask.cron}`);
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      throw new Error(`添加任务失败 (${newTask.cron}): ${errorMsg}`);
     }
   }
 

@@ -378,8 +378,23 @@ describe("命令处理集成测试", () => {
       expect(result).toContain("路由统计");
     });
 
-    it.skip("应该支持 analyze 子命令 (跳过 - 需要网络请求)", async () => {
-      // 此测试需要网络请求，跳过
+    it("应该在没有参数时返回帮助信息", async () => {
+      const ctx = createContext();
+      const result = await handleCommand("route", "", ctx);
+
+      // 验证返回帮助信息而不是错误
+      expect(result).toContain("智能任务路由");
+      expect(result).toContain("analyze");
+      expect(result).toContain("stats");
+    });
+
+    it("应该在没有参数时显示用法帮助", async () => {
+      const ctx = createContext();
+      const result = await handleCommand("route", "analyze", ctx);
+
+      // 没有具体任务时显示帮助
+      expect(result).toContain("用法");
+      expect(result).toContain("/route analyze");
     });
   });
 
