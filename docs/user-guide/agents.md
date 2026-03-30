@@ -2,6 +2,8 @@
 
 本文件为 AI Coding Agent 提供项目概述、构建说明、代码规范等关键信息。
 
+> ⚠️ **TDD 强制要求**：本项目严格遵循测试驱动开发（TDD）。任何代码修改必须先写测试，严禁先改代码后补测试！详见 [TDD_GUIDELINE.md](../../TDD_GUIDELINE.md)
+
 ## 项目概述
 
 **weixin-kimi-bot** 是一个基于腾讯 iLink 协议的微信 AI Bot，通过微信消息远程操控 Kimi Code CLI。
