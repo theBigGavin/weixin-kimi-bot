@@ -89,11 +89,11 @@ describe("deploy 命令 - 集成测试验证", () => {
       const force = true;
 
       // Act
-      const result = await validateBeforeDeploy(mockTestResult, force);
+      const result = await validateBeforeDeploy(mockTestResult, force, "development");
 
       // Assert
       expect(result.canDeploy).toBe(true);
-      expect(result.message).toContain("⚠️ 强制部署");
+      expect(result.message).toContain("强制部署");
     });
 
     it("应该阻止部署当没有测试数据", async () => {

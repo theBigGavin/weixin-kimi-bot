@@ -10,6 +10,11 @@ import { sendTextReply } from "../message-utils.js";
 import { execSync } from "node:child_process";
 
 /**
+ * 部署环境类型
+ */
+export type DeployEnvironment = "development" | "staging" | "production";
+
+/**
  * 测试结果类型
  */
 export interface TestResult {
@@ -27,6 +32,21 @@ export interface DeployValidationResult {
   canDeploy: boolean;
   message: string;
   details?: TestResult;
+}
+
+/**
+ * 获取当前部署环境
+ * 优先级：DEPLOY_ENV > NODE_ENV > development
+ */
+export function getDeployEnvironment(): DeployEnvironment {
+  const env = process.env.DEPLOY_ENV || process.env.NODE_ENV || "development";
+  
+  // 只允许特定的环境值
+  if (["production", "staging", "development"].includes(env)) {
+    return env as DeployEnvironment;
+  }
+  
+  return "development";
 }
 
 /**
@@ -81,17 +101,23 @@ export async function runIntegrationTests(): Promise<TestResult> {
 
 /**
  * 验证是否可以部署
+ * 
+ * 根据环境有不同的策略：
+ * - production: 要求所有测试通过，不能有任何跳过
+ * - staging: 允许有跳过测试，但不能有失败
+ * - development: 允许有跳过测试，但不能有失败
  */
 export async function validateBeforeDeploy(
   testResult: TestResult | null,
-  force: boolean = false
+  force: boolean = false,
+  environment: DeployEnvironment = getDeployEnvironment()
 ): Promise<DeployValidationResult> {
   // 如果没有测试结果
   if (!testResult) {
     if (force) {
       return {
         canDeploy: true,
-        message: "⚠️ 强制部署：无法获取测试结果，跳过验证",
+        message: `⚠️ [${environment}] 强制部署：无法获取测试结果，跳过验证`,
       };
     }
     return {
@@ -103,25 +129,61 @@ export async function validateBeforeDeploy(
   const { passed, failed, skipped } = testResult;
   const total = passed + failed + skipped;
 
+  // 生产环境特殊要求
+  if (environment === "production") {
+    // 生产环境：测试数量不能太少（至少50个）
+    if (total < 50) {
+      return {
+        canDeploy: false,
+        message: `❌ [${environment}] 部署被拒绝：测试数量不足（${total} 个，要求至少50个）`,
+        details: testResult,
+      };
+    }
+
+    // 生产环境：不允许有任何失败
+    if (failed > 0) {
+      return {
+        canDeploy: false,
+        message: `❌ [${environment}] 部署被拒绝：${failed} 个测试失败（共 ${total} 个测试）`,
+        details: testResult,
+      };
+    }
+
+    // 生产环境：不允许有任何跳过
+    if (skipped > 0) {
+      return {
+        canDeploy: false,
+        message: `❌ [${environment}] 部署被拒绝：${skipped} 个测试被跳过（生产环境要求100%测试通过）`,
+        details: testResult,
+      };
+    }
+
+    return {
+      canDeploy: true,
+      message: `✅ [${environment}] 测试验证通过：${passed} 个测试全部通过（100%）`,
+      details: testResult,
+    };
+  }
+
+  // 非生产环境（staging/development）
   // 如果有测试失败
   if (failed > 0) {
     return {
       canDeploy: false,
-      message: `❌ 部署被拒绝：${failed} 个测试失败（共 ${total} 个测试）`,
+      message: `❌ [${environment}] 部署被拒绝：${failed} 个测试失败（共 ${total} 个测试）`,
       details: testResult,
     };
   }
 
   // 如果有测试被跳过，显示警告但不阻止部署
-  // 注意：跳过测试可能是因为环境依赖，只要没有失败测试就可以部署
   if (skipped > 0) {
-    console.log(`[Deploy] 警告：${skipped} 个测试被跳过，但无失败测试，允许部署`);
+    console.log(`[Deploy] [${environment}] 警告：${skipped} 个测试被跳过，但无失败测试，允许部署`);
   }
 
   // 所有测试通过（允许有跳过）
   return {
     canDeploy: true,
-    message: `✅ 测试验证通过：${passed} 个测试通过，${skipped} 个跳过，${failed} 个失败`,
+    message: `✅ [${environment}] 测试验证通过：${passed} 个测试通过，${skipped} 个跳过，${failed} 个失败`,
     details: testResult,
   };
 }
@@ -131,15 +193,20 @@ export async function deployHandler(args: string, context: CommandContext): Prom
 
   const versionType = args.trim() || "patch";
   if (!["patch", "minor", "major"].includes(versionType)) {
-    return `❌ 无效的版本类型: ${versionType}\n\n用法:\n- \`/deploy\` 或 \`/deploy patch\` - 补丁版本\n- \`/deploy minor\` - 次版本\n- \`/deploy major\` - 主版本\n\n⚠️ 部署前会自动运行测试验证，测试通过或跳过项存在时将阻止部署`;
+    const currentEnv = getDeployEnvironment();
+    return `❌ 无效的版本类型: ${versionType}\n\n用法:\n- \`/deploy\` 或 \`/deploy patch\` - 补丁版本\n- \`/deploy minor\` - 次版本\n- \`/deploy major\` - 主版本\n\n⚠️ 部署前会自动运行测试验证\n当前环境: ${currentEnv}\n\n环境配置:\n- DEPLOY_ENV: ${process.env.DEPLOY_ENV || "未设置"}\n- NODE_ENV: ${process.env.NODE_ENV || "未设置"}`;
   }
 
   // 检查是否强制部署（使用 --force 或 -f 标志）
   const isForce = args.includes("--force") || args.includes("-f");
 
+  // 获取当前环境
+  const environment = getDeployEnvironment();
+  console.log(`[Deploy] 当前环境: ${environment}`);
+
   // 运行集成测试验证
   const testResult = await runIntegrationTests();
-  const validation = await validateBeforeDeploy(testResult, isForce);
+  const validation = await validateBeforeDeploy(testResult, isForce, environment);
 
   if (!validation.canDeploy) {
     return `❌ **部署被拒绝**\n\n${validation.message}\n\n请先修复测试问题后再部署。\n\n如需强制部署（不推荐），请使用：\n\`/deploy ${versionType} --force\``;
