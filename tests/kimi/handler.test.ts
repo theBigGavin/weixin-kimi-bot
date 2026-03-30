@@ -17,6 +17,24 @@ describe("Kimi Handler", () => {
       expect(typeof handler.isLikelyLongTask).toBe("function");
     });
 
+    it("应该导出认证检查提示词常量", async () => {
+      const { KIMI_AUTH_CHECK_PROMPT } = await import("../../src/kimi/handler.js");
+      
+      // 常量应该存在
+      expect(KIMI_AUTH_CHECK_PROMPT).toBeDefined();
+      expect(typeof KIMI_AUTH_CHECK_PROMPT).toBe("string");
+    });
+
+    it("认证检查提示词应该包含描述性文字帮助用户理解", async () => {
+      const { KIMI_AUTH_CHECK_PROMPT } = await import("../../src/kimi/handler.js");
+      
+      // 提示词应该让用户明白这是系统自检产生的
+      expect(KIMI_AUTH_CHECK_PROMPT).toContain("系统自检");
+      expect(KIMI_AUTH_CHECK_PROMPT).toContain("认证状态");
+      // 提示词应该告诉用户可以忽略此消息
+      expect(KIMI_AUTH_CHECK_PROMPT).toContain("可忽略");
+    });
+
     it("应该导出类型定义", async () => {
       const handler = await import("../../src/kimi/handler.js");
       

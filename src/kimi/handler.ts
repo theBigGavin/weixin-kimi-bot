@@ -5,6 +5,12 @@
 import { spawn } from "node:child_process";
 import type { BotConfig } from "../store.js";
 
+/**
+ * 用于验证Kimi CLI认证状态的提示词
+ * 这个提示词会在每次服务启动时发送到Kimi，用于检查认证是否正常
+ */
+export const KIMI_AUTH_CHECK_PROMPT = "系统自检：验证Kimi CLI认证状态，此消息可忽略";
+
 export type KimiResponse = {
   text: string;
   durationMs: number;
@@ -219,7 +225,7 @@ export async function checkKimiInstalled(): Promise<boolean> {
  */
 export async function checkKimiAuthenticated(): Promise<boolean> {
   return new Promise((resolve) => {
-    const child = spawn("kimi", ["--quiet", "--prompt", "hi"], {
+    const child = spawn("kimi", ["--quiet", "--prompt", KIMI_AUTH_CHECK_PROMPT], {
       stdio: ["ignore", "pipe", "pipe"],
     });
     
