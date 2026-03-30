@@ -103,7 +103,7 @@ echo ""
 # 步骤2: 清理临时目录
 echo "🧹 步骤 2/3: 清理临时目录..."
 echo "================================"
-node "$SCRIPT_DIR/cleanup-temp-dirs.js"
+node "$PROJECT_DIR/dist/scripts/cleanup-temp-dirs.js"
 CLEANUP_EXIT=$?
 if [ $CLEANUP_EXIT -eq 0 ]; then
     echo "✅ 临时目录清理完成"
