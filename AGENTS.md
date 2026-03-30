@@ -292,6 +292,37 @@ describe('validateAgentConfig', () => {
 - 导出类型使用 `export type`
 - 类型文件统一放在 `src/types/` 或模块内的 `types.ts`
 
+### TDD 规范（强制）
+
+**所有代码编写必须遵循 TDD 原则：**
+
+1. **红-绿-重构循环**
+   - 🔴 红色：先写测试，定义期望行为
+   - 🟢 绿色：编写最小代码使测试通过
+   - 🔵 重构：在测试保护下优化代码
+
+2. **测试要求**
+   - 测试文件：`tests/{模块}/{功能}.test.ts`
+   - 命名规范：`应该{期望行为}当{条件}`
+   - AAA 模式：Arrange → Act → Assert
+   - 必须测试边界条件和错误路径
+
+3. **提交规范**
+   ```bash
+   test: 添加用户认证测试      # 红色阶段
+   feat: 实现用户认证功能      # 绿色阶段
+   refactor: 优化认证逻辑      # 重构阶段
+   ```
+
+4. **测试运行**
+   ```bash
+   npm test                    # 运行所有测试
+   npm test -- tests/xxx.test.ts  # 运行特定测试
+   npm run test:coverage       # 覆盖率报告
+   ```
+
+**注意**：程序员助手角色的 Agent 会自动在系统提示词中接收 TDD 指令。
+
 ## Agent 管理命令
 
 ```bash

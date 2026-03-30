@@ -78,6 +78,8 @@ export interface AgentConfig {
     notifications: boolean;
     fileAccess: boolean;
     webSearch: boolean;
+    /** 是否启用 TDD 指令（默认 true） */
+    tddInstruction?: boolean;
   };
 
   /** 统计信息 */

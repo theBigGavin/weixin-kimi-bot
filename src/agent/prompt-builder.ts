@@ -5,6 +5,7 @@
  */
 import type { AgentRuntime, PromptBuildOptions } from "./types.js";
 import { formatMemoryForPrompt } from "../memory/manager.js";
+import { getTDDInstruction } from "../prompt/tdd-instruction.js";
 
 /**
  * 构建系统提示词
@@ -25,6 +26,12 @@ export function buildSystemPrompt(
 
   // 1. 基础能力模板（必须，放在最前面）
   parts.push(runtime.template.systemPrompt);
+
+  // 2. TDD 指令（如果是编程相关角色）
+  const tddInstruction = getTDDInstruction(runtime);
+  if (tddInstruction) {
+    parts.push(tddInstruction);
+  }
 
   // 2. 长期记忆（如果启用）
   if (opts.includeMemory && runtime.config.memory.enabled) {
